@@ -1,0 +1,113 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <title>Basic demo</title>
+    <style>
+      body {
+        margin: 0;
+      }
+
+      #scroller {
+        position: absolute;
+        top: calc(50% - 250px);
+        left: calc(50% - 400px);
+        border: 1px solid #ccc;
+        width: 800px;
+        height: 500px;
+        overflow-y: auto;
+      }
+
+      #container {
+        position: relative;
+      }
+
+      .header {
+        background-color: #ddd;
+        padding: 5px;
+      }
+
+      .row {
+        min-height: 100px;
+        padding: 5px;
+        box-sizing: border-box;
+        border-bottom: 1px solid #ddd;
+        width: 100%;
+      }
+
+      .top {
+        height: 100px;
+      }
+
+    </style>
+  </head>
+  <body>
+
+    <div id="scroller">
+      <div class="top"><h1>Title</h1></div>
+      <div id="container">
+        <div class="header" data-reusable-id="header">Recent</div>
+        <div class="row" data-reusable-id="row">Item 0</div>
+        <div class="row" data-reusable-id="row">Item 1</div>
+        <div class="row" data-reusable-id="row">Item 2</div>
+        <div class="row" data-reusable-id="row">Item 3</div>
+        <div class="row" data-reusable-id="row">Item 4</div>
+        <div class="row" data-reusable-id="row">Item 5</div>
+      </div>
+    </div>
+
+    <script src="../UITableView.js"></script>
+
+    <script>
+      function buildItems(size) {
+        var items = [];
+
+        while (items.length < size) {
+          items.push({item: 'Item ' + items.length });
+        }
+
+        return items;
+      }
+
+      requestAnimationFrame(function() {
+        var tableView = UITableView.create({
+
+          scrollingElement: document.querySelector('#scroller'),
+
+          containerElement: document.querySelector('#container'),
+
+          data: [{ sectionName: 'Recent' }].concat(buildItems(50)).concat({ sectionName: 'Recent' }).concat(buildItems(50)),
+
+          getCellElement(index) {
+            var isSectionHeader = this.data[index].sectionName != null;
+            var reusableId = isSectionHeader ? 'header' : 'row';
+            var el = this.dequeueReusableElementWithId(reusableId, index);
+            if (!el) {
+              el = document.createElement('div');
+              el.className = reusableId;
+              el.dataset.reusableId = reusableId;
+            }
+
+            if (this.data[index].height) {
+              el.style.height = this.data[index].height + 'px';
+            } else {
+              el.style.height = '';
+            }
+            el.innerText = isSectionHeader ? this.data[index].sectionName : this.data[index].item;
+            return el;
+          }
+
+        });
+
+        window.tableView = tableView;
+
+      });
+
+
+      function update(idx) {
+        tableView.data[idx].item = 'Update | ' + tableView.data[idx].item;
+        tableView.reloadCellAtIndex(idx);
+      }
+
+    </script>
+  </body>
+</html>
