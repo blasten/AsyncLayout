@@ -5,30 +5,39 @@
     <style>
       body {
         margin: 0;
+        font-family: "Helvetica Neue", Helvetica, Arial, sans-serif;
       }
 
-      #scroller {
+      #container {
         position: absolute;
         top: calc(50% - 250px);
         left: calc(50% - 400px);
         border: 1px solid #ccc;
         width: 800px;
         height: 500px;
+        overflow: hidden;
+      }
+
+      #scroller {
+        width: 100%;
+        height: 100%;
         overflow-y: auto;
       }
 
-      #container {
+      #content {
         position: relative;
       }
 
-      .header {
-        background-color: #ddd;
-        padding: 5px;
+      .sticky {
+        background-color: rgba(255, 255, 255, 0.9);
+        font-weight: bold;
+        padding: 5px 10px;
+        border-bottom: 1px solid #ddd;
       }
 
       .row {
         min-height: 100px;
-        padding: 5px;
+        padding: 10px 20px;
         box-sizing: border-box;
         border-bottom: 1px solid #ddd;
         width: 100%;
@@ -42,10 +51,11 @@
   </head>
   <body>
 
+  <div id="container">
     <div id="scroller">
-      <div class="top"><h1>Title</h1></div>
-      <div id="container">
-        <div class="header" data-reusable-id="header">Recent</div>
+      <!-- <div class="top"><h1>Title</h1></div> -->
+      <div id="content">
+        <div class="sticky" data-reusable-id="sticky">Recent</div>
         <div class="row" data-reusable-id="row">Item 0</div>
         <div class="row" data-reusable-id="row">Item 1</div>
         <div class="row" data-reusable-id="row">Item 2</div>
@@ -54,6 +64,7 @@
         <div class="row" data-reusable-id="row">Item 5</div>
       </div>
     </div>
+  </div>
 
     <script src="../UITableView.js"></script>
 
@@ -73,29 +84,47 @@
 
           scrollingElement: document.querySelector('#scroller'),
 
+          contentElement: document.querySelector('#content'),
+
           containerElement: document.querySelector('#container'),
 
-          data: [{ sectionName: 'Recent' }].concat(buildItems(50)).concat({ sectionName: 'Recent' }).concat(buildItems(50)),
+          data: [{ sectionName: 'Recent', items: buildItems(50) }].concat({ sectionName: 'Yesterday', items: buildItems(50) }),
 
-          getCellElement(index) {
-            var isSectionHeader = this.data[index].sectionName != null;
-            var reusableId = isSectionHeader ? 'header' : 'row';
-            var el = this.dequeueReusableElementWithId(reusableId, index);
+          numberOfSections() {
+            return 2;
+          },
+
+          shouldHeaderStick(secIdx, el) {
+            return true;
+          },
+
+          getHeaderElement(sectionIndex) {
+            var reusableId = 'sticky';
+            var el = this.dequeueReusableElementWithId(reusableId, arguments);
+            if (!el) {
+              el = document.createElement('div');
+              el.className = 'sticky';
+              el.dataset.reusableId = reusableId;
+            }
+            el.innerText = this.data[sectionIndex].sectionName;
+            return el;
+          },
+
+          getNumberOfCellsInSection(sectionIndex) {
+            return this.data[sectionIndex].items.length;
+          },
+
+          getCellElement(cellIdx, sectionIndex) {
+            var reusableId = 'row';
+            var el = this.dequeueReusableElementWithId(reusableId, arguments);
             if (!el) {
               el = document.createElement('div');
               el.className = reusableId;
               el.dataset.reusableId = reusableId;
             }
-
-            if (this.data[index].height) {
-              el.style.height = this.data[index].height + 'px';
-            } else {
-              el.style.height = '';
-            }
-            el.innerText = isSectionHeader ? this.data[index].sectionName : this.data[index].item;
+            el.innerText = this.data[sectionIndex].items[cellIdx].item;
             return el;
           }
-
         });
 
         window.tableView = tableView;

@@ -155,6 +155,7 @@ function _classCallCheck(instance, Constructor) { if (!(instance instanceof Cons
 
           this._map.delete(obj);
           this._length--;
+          return obj;
         }
 
         /**
@@ -206,9 +207,7 @@ function _classCallCheck(instance, Constructor) { if (!(instance instanceof Cons
           if (this._rearListItem == null) {
             return null;
           }
-          var obj = this._rearListItem.key;
-          this.delete(obj);
-          return obj;
+          return this.delete(this._rearListItem.key);
         }
 
         /**
@@ -224,9 +223,7 @@ function _classCallCheck(instance, Constructor) { if (!(instance instanceof Cons
           if (this._peekListItem == null) {
             return null;
           }
-          var obj = this._peekListItem.key;
-          this.delete(obj);
-          return obj;
+          return this.delete(this._peekListItem.key);
         }
 
         /**
@@ -341,7 +338,9 @@ function _classCallCheck(instance, Constructor) { if (!(instance instanceof Cons
         this.orientation = UITableView.ORIENTATION_VERTICAL;
         this.direction = UITableView.DIRECTION_START_END;
         this._renderedQueue = new QueueList();
+        this._stickyQueue = new QueueList();
         this._reusableQueues = {};
+        this._isolatedCells = {};
         this._window = 0.5;
         this._sumNodeSizes = 0;
         this._sumNodeLength = 0;
@@ -370,9 +369,9 @@ function _classCallCheck(instance, Constructor) { if (!(instance instanceof Cons
       }, {
         key: "_reconcile",
         value: function _reconcile() {
-          var nodes = this.containerElement.querySelectorAll('[data-reusable-id]');
-          for (var _i = 0; _i < nodes.length; _i++) {
-            this._pushToReusableQueue(nodes[_i]);
+          var nodes = this.contentElement.querySelectorAll('[data-reusable-id]');
+          for (var i = 0; i < nodes.length; i++) {
+            this._pushToReusableQueue(nodes[i]);
           }
           this._update(true);
         }
@@ -434,6 +433,7 @@ function _classCallCheck(instance, Constructor) { if (!(instance instanceof Cons
         key: "scrollToCellIndex",
         value: function scrollToCellIndex(idx) {
           var Q = this._renderedQueue;
+          var offsetStart = this.getContainerOffsetStart();
           if (Q.isEmpty() || idx < 0 || idx >= this.numberOfCells) {
             return;
           }
@@ -441,8 +441,8 @@ function _classCallCheck(instance, Constructor) { if (!(instance instanceof Cons
             var itr = Q.iterator(),
                 next = itr.next();
             while (next.value != null) {
-              if (nodes[i]._d.index === idx) {
-                this.scrollStart = nodes[i]._d.offsetStart;
+              if (next.value._d.index === idx) {
+                this.scrollStart = next.value._d.offsetStart + offsetStart;
                 return;
               }
               next = itr.next();
@@ -451,18 +451,18 @@ function _classCallCheck(instance, Constructor) { if (!(instance instanceof Cons
             this._updateReusables(true, function () {
               return true;
             });
-            var cell = this.allocateCell(idx);
+            var cell = this._allocateCell(idx);
             if (this._sumNodeLength === 0) {
               this._sumNodeSizes = this.getCellSize(idx, cell);
               this._sumNodeLength = 1;
             }
             var avgSize = this._sumNodeSizes / this._sumNodeLength;
             this._estContentSize = avgSize * this.numberOfCells;
-            this.containerElement.style.height = this._estContentSize + 'px';
+            this.contentElement.style.height = this._estContentSize + 'px';
             cell._d.index = idx;
             cell._d.offsetStart = ~ ~(avgSize * idx);
             Q.push(cell);
-            this.scrollStart = cell._d.offsetStart;
+            this.scrollStart = cell._d.offsetStart + offsetStart;
             this._updateCachedStates();
             this._positionNodes(Q.peek, Q.rear, true);
             this._update(false);
@@ -540,6 +540,7 @@ function _classCallCheck(instance, Constructor) { if (!(instance instanceof Cons
           if (rear && rear._d.index === this.numberOfCells - 1) {
             this._realContentSize = rear._d.offsetEnd;
           }
+          this._adjustStickyCells();
           this._adjustScrollbarsIfNeeded();
         }
 
@@ -632,12 +633,12 @@ function _classCallCheck(instance, Constructor) { if (!(instance instanceof Cons
           }
           if (this._realContentSize > 0) {
             this._estContentSize = this._realContentSize;
-            this.containerElement.style.height = this._realContentSize + 'px';
+            this.contentElement.style.height = this._realContentSize + 'px';
           } else {
             var newContentSize = Math.round(this._avgCellSize * this.numberOfCells);
             if (Math.abs(newContentSize - this._estContentSize) > 100) {
               this._estContentSize = newContentSize;
-              this.containerElement.style.height = newContentSize + 'px';
+              this.contentElement.style.height = newContentSize + 'px';
             }
           }
         }
@@ -649,9 +650,6 @@ function _classCallCheck(instance, Constructor) { if (!(instance instanceof Cons
       }, {
         key: "_shouldReuse",
         value: function _shouldReuse(node) {
-          if (this._renderedQueue.length <= 1) {
-            return false;
-          }
           var win = this._clientSize * this._window;
           return node._d.offsetEnd < this._scrollStart - win || node._d.offsetStart > this._scrollEnd + win;
         }
@@ -666,7 +664,7 @@ function _classCallCheck(instance, Constructor) { if (!(instance instanceof Cons
           var Q = this._renderedQueue;
 
           if (Q.isEmpty()) {
-            var length = this._allocateCells(3, end);
+            var length = this._allocateNodes(3, end);
             this._sumNodeSizes += this._positionNodes(Q.peek, Q.rear, end);
             this._sumNodeLength += length;
           }
@@ -695,7 +693,7 @@ function _classCallCheck(instance, Constructor) { if (!(instance instanceof Cons
               return;
             }
 
-            var _length = this._allocateCells(size, end);
+            var _length = this._allocateNodes(size, end);
             var fromNode = end ? Q.getNext(last) : Q.getPrevious(last);
             this._sumNodeSizes += this._positionNodes(fromNode, Q[lastKey], end);
             this._sumNodeLength += _length;
@@ -711,8 +709,8 @@ function _classCallCheck(instance, Constructor) { if (!(instance instanceof Cons
          */
 
       }, {
-        key: "_allocateCells",
-        value: function _allocateCells(size, end) {
+        key: "_allocateNodes",
+        value: function _allocateNodes(size, end) {
           var Q = this._renderedQueue;
           var currentSize = 0;
           var maxSize = this.numberOfCells;
@@ -723,36 +721,154 @@ function _classCallCheck(instance, Constructor) { if (!(instance instanceof Cons
             idx = end ? lastRendered._d.index + 1 : lastRendered._d.index - 1;
           }
           while (currentSize < size && idx >= 0 && idx < maxSize) {
-            end ? Q.push(this.allocateCell(idx)) : Q.unshift(this.allocateCell(idx));
+            end ? Q.push(this._allocate(idx)) : Q.unshift(this._allocate(idx));
             idx = end ? idx + 1 : idx - 1;
             currentSize++;
           }
 
           return currentSize;
         }
+      }, {
+        key: "_getSectionObject",
+        value: function _getSectionObject(idx) {
+          var sections = this._sections;
+          var l = 0;
+          var r = this.numberOfSections - 1;
+
+          if (!this._sections) {
+            sections = [];
+            var secIdx = 0;
+            var startIdx = 0;
+            var endIndex = void 0;
+
+            while (secIdx <= r) {
+              endIndex = this.getNumberOfCellsInSection(secIdx) + startIdx;
+              sections.push({ index: secIdx, start: startIdx, end: endIndex });
+              startIdx = endIndex + 1;
+              secIdx++;
+            }
+            this.size = startIdx;
+            this._sections = sections;
+          }
+          // Binary search
+          while (l <= r) {
+            var mid = l + r >> 1;
+            if (idx < sections[mid].start) {
+              r = l - 1;
+            } else if (idx > sections[mid].end) {
+              l = l + 1;
+            } else {
+              return sections[mid];
+            }
+          }
+          return null;
+        }
+
+        // _allocateCells(size, end) {
+        //   var Q = this._renderedQueue;
+        //   var lastRendered = end ? this._renderedQueue.rear : this._renderedQueue.peek;
+        //   var idx = 0;
+        //   var secIdx = 0;
+        //   var cellsInSec;
+        //   var numSections = this.numberOfSections;
+        //   var allocated = 0;
+
+        //   if (lastRendered) {
+        //     if (lastRendered._d.is === UITableView.CLASS_HEADER) {
+        //       cellsInSec = this.getNumberOfCellsInSection(secIdx);
+        //       secIdx = end ? lastRendered._d.index + 1 : lastRendered._d.index - 1;
+        //       idx = end ? 0 : cellsInSec - 1;
+        //     } else {
+        //       cellsInSec = this.getNumberOfCellsInSection(lastRendered._d.secIndex);
+        //       idx = end ? lastRendered._d.index + 1 : lastRendered._d.index - 1;
+        //     }
+        //   }
+        //   while (allocated < size && idx >= 0 && idx < cellsInSec) {
+        //     if (idx === 0) {
+        //       let header = this._allocate(UITableView.CLASS_HEADER, secIdx);
+        //       if (!header) {
+        //         continue;
+        //       }
+        //       end ? Q.push(cell) : Q.unshift(cell);
+        //       if (this.shouldHeaderStick(secIdx, header)) {
+        //         end ? this._stickyQueue.push(cell) : this._stickyQueue.unshift(cell);
+        //       }
+        //       allocated = allocated + 1;
+        //     }
+        //     if (allocated < size) {
+        //       let cell = this._allocate(UITableView.CLASS_CELL, idx, secIdx);
+        //       if (!cell) {
+        //         continue;
+        //       }
+        //       end ? Q.push(cell) : Q.unshift(cell);
+        //     }
+        //     idx = end ? idx + 1 : idx - 1;
+        //     if (idx < 0) {
+        //       secIdx = secIdx - 1;
+        //       if (secIdx >= 0) {
+        //         cellsInSec = this.getNumberOfCellsInSection(secIdx);
+        //         idx = cellsInSec - 1;
+        //       } else {
+        //         return allocated;
+        //       }
+        //     }
+        //     if (idx >= cellsInSec) {
+        //       idx = 0;
+        //       secIdx = secIdx + 1;
+        //       if (secIdx < numSections) {
+        //         cellsInSec = this.getNumberOfCellsInSection(secIdx);
+        //       } else {
+        //         return allocated;
+        //       }
+        //     }
+        //     allocated = allocated + 1;
+        //   }
+        //   return allocated;
+        // }
 
         /**
          *
          */
 
       }, {
-        key: "allocateCell",
-        value: function allocateCell(idx) {
+        key: "_allocate",
+        value: function _allocate(idx) {
           var Q = this._renderedQueue;
-          var cell = this.getCellElement(idx);
+          var section = this._getSectionObject(idx);
+
+          console.log(this._sections);
+          var cell = section.start === idx ? this.getHeaderElement(section.index, section) : this.getCellElement(idx - section.start, section.index, section);
+
           if (!cell._d) {
             this._setCellStyles(cell);
           }
-          cell._d = {
-            index: idx,
-            size: 0,
-            offsetStart: 0,
-            offsetEnd: 0
-          };
+          cell._d = cell._d || {};
+          cell._d.index = idx;
+          cell._d.section = this._getSectionObject(idx);
+          cell._d.size = 0;
+          cell._d.offsetStart = 0;
+          cell._d.offsetEnd = 0;
           Q.delete(cell);
-          this._appendToContainer(cell);
+          this._appendToContent(cell);
           return cell;
         }
+        // _allocate(is, idx, secIdx) {
+        //   var Q = this._renderedQueue;
+        //   var cell = this.getCellElement(idx);
+        //   if (!cell._d) {
+        //     this._setCellStyles(cell);
+        //   }
+        //   cell._d = cell._d || {};
+        //   cell._d.is = is;
+        //   cell._d.index = idx;
+        //   cell._d.secIndex = secIdx;
+        //   cell._d.size = 0;
+        //   cell._d.offsetStart = 0;
+        //   cell._d.offsetEnd = 0;
+        //   Q.delete(cell);
+        //   this._appendToContent(cell);
+        //   return cell;
+        // }
 
         /**
          * @param {Array<Node>} nodes
@@ -771,11 +887,9 @@ function _classCallCheck(instance, Constructor) { if (!(instance instanceof Cons
             var previousNode = Q.getPrevious(fromNode);
             lastNode = Q.getNext(toNode);
             offset = previousNode ? previousNode._d.offsetEnd : fromNode._d.offsetStart;
-
             if (node._d.index === 0 && offset !== 0) {
               offset = 0;
             }
-
             while (node != lastNode) {
               node._d.size = this.getCellSize(node._d.index, node);
               node._d.offsetStart = offset;
@@ -801,28 +915,79 @@ function _classCallCheck(instance, Constructor) { if (!(instance instanceof Cons
 
           node = fromNode;
           while (node != lastNode) {
-            if (this.orientation === UITableView.ORIENTATION_VERTICAL) {
-              node.style.transform = 'translate3d(0, ' + node._d.offsetStart + 'px, 0)';
-            } else {
-              node.style.transform = 'translate3d(' + node._d.offsetStart + 'px, 0, 0)';
-            }
+            this._position(node, node._d.offsetStart);
             node = end ? Q.getNext(node) : Q.getPrevious(node);
           }
 
           return sumSize;
         }
       }, {
-        key: "_appendToContainer",
-        value: function _appendToContainer(node) {
-          if (this.containerElement && node && !node.parentNode) {
-            this.containerElement.appendChild(node);
+        key: "_position",
+        value: function _position(node, offsetStart) {
+          if (this.orientation === UITableView.ORIENTATION_VERTICAL) {
+            node.style.transform = 'translate3d(0, ' + offsetStart + 'px, 0)';
+          } else {
+            node.style.transform = 'translate3d(' + offsetStart + 'px, 0, 0)';
+          }
+        }
+      }, {
+        key: "_adjustStickyCells",
+        value: function _adjustStickyCells() {
+          var SQ = this._stickyQueue;
+          if (SQ.isEmpty()) {
+            return;
+          }
+          var itr = SQ.iterator();
+          var next = itr.next();
+          var offsetStart = this._scrollStart - this.getContainerOffsetStart();
+
+          while (next.value != null) {
+            var cell = next.value;
+            var stickyCell = cell._d.stickyCell;
+
+            if (cell._d.offsetStart <= offsetStart) {
+              if (!stickyCell) {
+                this._isolate(cell, false);
+                stickyCell = this._allocateCell(cell._d.index);
+                this._isolate(cell, true);
+                cell._d.stickyCell = stickyCell;
+                this.containerElement.appendChild(stickyCell);
+              }
+              var nextStickyCell = SQ.getNext(cell);
+              if (nextStickyCell) {
+                var slideDy = nextStickyCell._d.offsetStart - (offsetStart + cell._d.size);
+                this._position(stickyCell, slideDy < 0 ? slideDy : 0);
+              }
+              cell.style.visibility = 'hidden';
+              stickyCell.style.display = 'block';
+            } else if (stickyCell) {
+              cell.style.visibility = '';
+              stickyCell.style.display = 'none';
+            }
+            next = itr.next();
+          }
+        }
+      }, {
+        key: "_isolate",
+        value: function _isolate(cell, yes) {
+          if (yes) {
+            this._isolatedCells[cell._d.index] = cell;
+          } else {
+            delete this._isolatedCells[cell._d.index];
+          }
+        }
+      }, {
+        key: "_appendToContent",
+        value: function _appendToContent(node) {
+          if (this.contentElement && node && !node.parentNode) {
+            this.contentElement.appendChild(node);
           }
         }
       }, {
         key: "_removeFromContainer",
         value: function _removeFromContainer(node) {
-          if (this.containerElement && node) {
-            this.containerElement.removeChild(node);
+          if (this.contentElement && node) {
+            this.contentElement.removeChild(node);
           }
         }
       }, {
@@ -830,23 +995,29 @@ function _classCallCheck(instance, Constructor) { if (!(instance instanceof Cons
         value: function _pushToReusableQueue(node) {
           var reusableId = node.dataset.reusableId;
           if (!reusableId) {
+            throw new Error('node is missing `dataset.reusableId`');
+          }
+          this._renderedQueue.delete(node);
+          if (node._d && this._isolatedCells[node._d.index]) {
             return;
           }
           if (!this._reusableQueues[reusableId]) {
             this._reusableQueues[reusableId] = new QueueList();
           }
           this._reusableQueues[reusableId].push(node);
-          this._renderedQueue.delete(node);
         }
       }, {
         key: "dequeueReusableElementWithId",
-        value: function dequeueReusableElementWithId(id, idx) {
+        value: function dequeueReusableElementWithId(id, args) {
           if (this.isUpdating && this.isIndexRendered(idx)) {
-            for (var _nodes = this._renderedQueue.asArray(), _i2 = 0; _i2 < _nodes.length; _i2++) {
-              if (_nodes[_i2]._d.index === idx) {
-                return _nodes[_i2];
+            for (var nodes = this._renderedQueue.asArray(), i = 0; i < nodes.length; i++) {
+              if (nodes[i]._d.index === idx) {
+                return nodes[i];
               }
             }
+          }
+          if (this._isolatedCells[idx]) {
+            return this._isolatedCells[idx];
           }
           if (this._reusableQueues[id]) {
             return this._reusableQueues[id].pop();
@@ -854,14 +1025,50 @@ function _classCallCheck(instance, Constructor) { if (!(instance instanceof Cons
           return null;
         }
       }, {
+        key: "getNumberOfCellsInSection",
+        value: function getNumberOfCellsInSection(sectionIdx) {
+          return 0;
+        }
+      }, {
+        key: "shouldCellStick",
+        value: function shouldCellStick(el) {
+          return false;
+        }
+      }, {
+        key: "shouldHeaderStick",
+        value: function shouldHeaderStick(secIdx, el) {
+          return false;
+        }
+      }, {
+        key: "getContainerOffsetStart",
+        value: function getContainerOffsetStart() {
+          var offset = 0,
+              node = this.contentElement;
+          while (node != null && node !== this.scrollingElement && node !== this.containerElement) {
+            offset += this.orientation === UITableView.ORIENTATION_VERTICAL ? this.contentElement.offsetTop : this.contentElement.offsetLeft;
+            node = node.offsetParent;
+          }
+          return offset;
+        }
+      }, {
+        key: "getHeaderElement",
+        value: function getHeaderElement(sectionIdx) {
+          throw new Error(errorMessages.unimplemented);
+        }
+      }, {
+        key: "getHeaderSize",
+        value: function getHeaderSize(sectionIdx, headerEl) {
+          return this.orientation === UITableView.ORIENTATION_VERTICAL ? headerEl.offsetHeight : headerEl.offsetWidth;
+        }
+      }, {
         key: "getCellElement",
-        value: function getCellElement(idx) {
+        value: function getCellElement(cellIdx, sectionIdx) {
           throw new Error(errorMessages.unimplemented);
         }
       }, {
         key: "getCellSize",
-        value: function getCellSize(idx, cellElement) {
-          return this.orientation === UITableView.ORIENTATION_VERTICAL ? cellElement.offsetHeight : cellElement.offsetWidth;
+        value: function getCellSize(cellIdx, sectionIdx, cellEl) {
+          return this.orientation === UITableView.ORIENTATION_VERTICAL ? cellEl.offsetHeight : cellEl.offsetWidth;
         }
 
         /**
@@ -909,9 +1116,19 @@ function _classCallCheck(instance, Constructor) { if (!(instance instanceof Cons
           throw new Error(errorMessages.unimplemented);
         }
       }, {
-        key: "containerElement",
+        key: "contentElement",
         get: function get() {
           return this.scrollingElement;
+        }
+      }, {
+        key: "containerElement",
+        get: function get() {
+          return null;
+        }
+      }, {
+        key: "numberOfSections",
+        get: function get() {
+          return 1;
         }
       }, {
         key: "numberOfCells",
@@ -928,6 +1145,8 @@ function _classCallCheck(instance, Constructor) { if (!(instance instanceof Cons
       return UITableView;
     }();
 
+    UITableView.CLASS_CELL = 1;
+    UITableView.CLASS_HEADER = 2;
     UITableView.ORIENTATION_VERTICAL = 1;
     UITableView.ORIENTATION_HORIZONTAL = 2;
     UITableView.DIRECTION_START_END = 3;
@@ -987,7 +1206,12 @@ function _classCallCheck(instance, Constructor) { if (!(instance instanceof Cons
         }, {
           key: "containerElement",
           get: function get() {
-            return props.containerElement || props.scrollingElement;
+            return props.containerElement;
+          }
+        }, {
+          key: "contentElement",
+          get: function get() {
+            return props.contentElement || props.scrollingElement;
           }
         }, {
           key: "numberOfCells",

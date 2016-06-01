@@ -20,7 +20,11 @@ module.exports = function factory(props) {
     }
 
     get containerElement() {
-      return props.containerElement || props.scrollingElement;
+      return props.containerElement;
+    }
+
+    get contentElement() {
+      return props.contentElement || props.scrollingElement;
     }
 
     get numberOfCells() {

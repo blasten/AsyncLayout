@@ -116,6 +116,7 @@ class QueueList {
 
     this._map.delete(obj);
     this._length--;
+    return obj;
   }
 
   /**
@@ -160,9 +161,7 @@ class QueueList {
     if (this._rearListItem == null) {
       return null;
     }
-    var obj = this._rearListItem.key;
-    this.delete(obj);
-    return obj;
+    return this.delete(this._rearListItem.key);
   }
 
   /**
@@ -175,9 +174,7 @@ class QueueList {
     if (this._peekListItem == null) {
       return null;
     }
-    var obj = this._peekListItem.key;
-    this.delete(obj);
-    return obj;
+    return this.delete(this._peekListItem.key);
   }
 
   /**
