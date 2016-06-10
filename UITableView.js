@@ -360,7 +360,7 @@ class UITableView {
 
   scrollToCellIndex(idx) {
     var Q = this._renderedQueue;
-    var offsetStart = this.getContainerOffsetStart();
+    var offsetStart = this._containerOffsetStart;
     if (Q.isEmpty() || idx < 0 || idx >= this.numberOfCells) {
       return;
     }
@@ -416,6 +416,7 @@ class UITableView {
     this._scrollStart = this.scrollStart;
     this._clientSize = this.clientSize;
     this._scrollEnd = this.scrollEnd;
+    this._containerOffsetStart = this.getContainerOffsetStart();
   }
 
   _setContainerStyles() {
@@ -489,9 +490,13 @@ class UITableView {
     var Q = this._renderedQueue;
     var itr = Q.iterator(!end);
     var next = itr.next();
+    var cell;
 
-    while (next.value != null && fn(next.value)) {
-      this._pushToReusableQueue(next.value);
+    while ((cell = next.value) != null && fn(cell)) {
+      this._pushToReusableQueue(cell);
+      if (cell._d && cell._d.isHeader) {
+        cell._d.section.header = null;
+      }
       next = itr.next();
     }
   }
@@ -555,6 +560,11 @@ class UITableView {
     var Q = this._renderedQueue;
 
     if (Q.isEmpty()) {
+      if (this.numberOfCells === 0) {
+        return;
+      }
+      // if the queue was empty, fill toward the end
+      end = true;
       let length = this._allocateNodes(3, end);
       this._sumNodeSizes += this._positionNodes(Q.peek, Q.rear, end);
       this._sumNodeLength += length;
@@ -609,35 +619,68 @@ class UITableView {
       idx = end ? lastRendered._d.index + 1 : lastRendered._d.index - 1;
     }
     while (currentSize < size && idx >= 0 && idx < maxSize) {
-      end ? Q.push(this._allocate(idx)) : Q.unshift(this._allocate(idx));
+      let cell = this._allocate(idx);
+      if (cell._d.isHeader) {
+        cell._d.section.header = cell;
+      }
+      this._appendToContent(cell);
+      end ? Q.push(cell) : Q.unshift(cell);
       idx = end ? idx + 1 : idx - 1;
       currentSize++;
     }
-
     return currentSize;
   }
 
-  _getSectionObject(idx) {
-    var sections = this._sections;
+  /**
+   *
+   */
+  _allocate(idx) {
+    var Q = this._renderedQueue;
+    var section = this._getSectionForIndex(idx);
+    var isHeader = Boolean(section.start === idx);
+    var cell = isHeader ? this.getHeaderElement(section.index, section) :
+        this.getCellElement(idx - section.start - 1, section.index, section);
+
+    if (!cell._d) {
+      this._setCellStyles(cell);
+    }
+    cell._d = cell._d || {};
+    cell._d.index = idx;
+    cell._d.isHeader = isHeader;
+    cell._d.section = section;
+    cell._d.size = 0;
+    cell._d.offsetStart = 0;
+    cell._d.offsetEnd = 0;
+    Q.delete(cell);
+    return cell;
+  }
+
+  _getSections() {
+    if (this._sections) {
+      return this._sections;
+    }
+    let sections = [];
+    let maxSec = this.numberOfSections - 1;
+    let secIdx = 0;
+    let startIdx = 0;
+    let endIndex;
+
+    while (secIdx <= maxSec) {
+      endIndex = this.getNumberOfCellsInSection(secIdx) + startIdx;
+      sections.push({ index: secIdx, start: startIdx, end: endIndex, header: null });
+      startIdx = endIndex + 1;
+      secIdx++;
+    }
+    this.size = startIdx;
+    this._sections = sections;
+    return sections;
+  }
+
+  _getSectionForIndex(idx) {
+    var sections = this._getSections();
     var l = 0;
     var r = this.numberOfSections - 1;
 
-    if (!this._sections) {
-      sections = [];
-      let secIdx = 0;
-      let startIdx = 0;
-      let endIndex;
-
-      while (secIdx <= r) {
-        endIndex = this.getNumberOfCellsInSection(secIdx) + startIdx;
-        sections.push({ index: secIdx, start: startIdx, end: endIndex });
-        startIdx = endIndex + 1;
-        secIdx++;
-      }
-      this.size = startIdx;
-      this._sections = sections;
-    }
-    // Binary search
     while (l <= r) {
       let mid = (l + r) >> 1;
       if (idx < sections[mid].start) {
@@ -650,110 +693,6 @@ class UITableView {
     }
     return null;
   }
-
-  // _allocateCells(size, end) {
-  //   var Q = this._renderedQueue;
-  //   var lastRendered = end ? this._renderedQueue.rear : this._renderedQueue.peek;
-  //   var idx = 0;
-  //   var secIdx = 0;
-  //   var cellsInSec;
-  //   var numSections = this.numberOfSections;
-  //   var allocated = 0;
-
-  //   if (lastRendered) {
-  //     if (lastRendered._d.is === UITableView.CLASS_HEADER) {
-  //       cellsInSec = this.getNumberOfCellsInSection(secIdx);
-  //       secIdx = end ? lastRendered._d.index + 1 : lastRendered._d.index - 1;
-  //       idx = end ? 0 : cellsInSec - 1;
-  //     } else {
-  //       cellsInSec = this.getNumberOfCellsInSection(lastRendered._d.secIndex);
-  //       idx = end ? lastRendered._d.index + 1 : lastRendered._d.index - 1;
-  //     }
-  //   }
-  //   while (allocated < size && idx >= 0 && idx < cellsInSec) {
-  //     if (idx === 0) {
-  //       let header = this._allocate(UITableView.CLASS_HEADER, secIdx);
-  //       if (!header) {
-  //         continue;
-  //       }
-  //       end ? Q.push(cell) : Q.unshift(cell);
-  //       if (this.shouldHeaderStick(secIdx, header)) {
-  //         end ? this._stickyQueue.push(cell) : this._stickyQueue.unshift(cell);
-  //       }
-  //       allocated = allocated + 1;
-  //     }
-  //     if (allocated < size) {
-  //       let cell = this._allocate(UITableView.CLASS_CELL, idx, secIdx);
-  //       if (!cell) {
-  //         continue;
-  //       }
-  //       end ? Q.push(cell) : Q.unshift(cell);
-  //     }
-  //     idx = end ? idx + 1 : idx - 1;
-  //     if (idx < 0) {
-  //       secIdx = secIdx - 1;
-  //       if (secIdx >= 0) {
-  //         cellsInSec = this.getNumberOfCellsInSection(secIdx);
-  //         idx = cellsInSec - 1;
-  //       } else {
-  //         return allocated;
-  //       }
-  //     }
-  //     if (idx >= cellsInSec) {
-  //       idx = 0;
-  //       secIdx = secIdx + 1;
-  //       if (secIdx < numSections) {
-  //         cellsInSec = this.getNumberOfCellsInSection(secIdx);
-  //       } else {
-  //         return allocated;
-  //       }
-  //     }
-  //     allocated = allocated + 1;
-  //   }
-  //   return allocated;
-  // }
-
-  /**
-   *
-   */
-  _allocate(idx) {
-    var Q = this._renderedQueue;
-    var section = this._getSectionObject(idx);
-
-    console.log(this._sections);
-    var cell = section.start === idx ? this.getHeaderElement(section.index, section) :
-        this.getCellElement(idx - section.start, section.index, section);
-
-    if (!cell._d) {
-      this._setCellStyles(cell);
-    }
-    cell._d = cell._d || {};
-    cell._d.index = idx;
-    cell._d.section = this._getSectionObject(idx);
-    cell._d.size = 0;
-    cell._d.offsetStart = 0;
-    cell._d.offsetEnd = 0;
-    Q.delete(cell);
-    this._appendToContent(cell);
-    return cell;
-  }
-  // _allocate(is, idx, secIdx) {
-  //   var Q = this._renderedQueue;
-  //   var cell = this.getCellElement(idx);
-  //   if (!cell._d) {
-  //     this._setCellStyles(cell);
-  //   }
-  //   cell._d = cell._d || {};
-  //   cell._d.is = is;
-  //   cell._d.index = idx;
-  //   cell._d.secIndex = secIdx;
-  //   cell._d.size = 0;
-  //   cell._d.offsetStart = 0;
-  //   cell._d.offsetEnd = 0;
-  //   Q.delete(cell);
-  //   this._appendToContent(cell);
-  //   return cell;
-  // }
 
   /**
    * @param {Array<Node>} nodes
@@ -773,7 +712,7 @@ class UITableView {
         offset = 0;
       }
       while (node != lastNode) {
-        node._d.size = this.getCellSize(node._d.index, node);
+        node._d.size = this.getNodeSize(node);
         node._d.offsetStart = offset;
         node._d.offsetEnd = offset + node._d.size;
         offset = node._d.offsetEnd;
@@ -787,7 +726,7 @@ class UITableView {
 
       while (node != lastNode) {
         node._d.offsetEnd = offset;
-        node._d.size = this.getCellSize(node._d.index, node);
+        node._d.size = this.getNodeSize(node);
         node._d.offsetStart = node._d.offsetEnd - node._d.size;
         offset = node._d.offsetStart;
         sumSize = sumSize + node._d.size;
@@ -813,39 +752,58 @@ class UITableView {
   }
 
   _adjustStickyCells() {
-    var SQ = this._stickyQueue;
-    if (SQ.isEmpty()) {
+    var Q = this._renderedQueue;
+
+    if (Q.isEmpty()) {
       return;
     }
-    var itr = SQ.iterator();
-    var next = itr.next();
-    var offsetStart = this._scrollStart - this.getContainerOffsetStart();
 
-    while (next.value != null) {
-      let cell = next.value;
-      let stickyCell = cell._d.stickyCell;
+    var headerOffsetStart = 0;
+    var peekSecIdx = Q.peek._d.section.index;
+    var rearSecIdx = Q.rear._d.section.index;
+    var topSecIdx = peekSecIdx;
 
-      if (cell._d.offsetStart <= offsetStart) {
-        if (!stickyCell) {
-          this._isolate(cell, false);
-          stickyCell = this._allocateCell(cell._d.index);
-          this._isolate(cell, true);
-          cell._d.stickyCell = stickyCell;
-          this.containerElement.appendChild(stickyCell);
+    if (peekSecIdx !== rearSecIdx) {
+      // try to use _section
+      let offsetStart = this._scrollStart - this._containerOffsetStart;
+      let currentSecIdx = peekSecIdx;
+
+      while (currentSecIdx <= rearSecIdx) {
+        let header = this._sections[currentSecIdx].header;
+        if (header) {
+          let minStart = offsetStart;
+          if (this._stickyHeader) {
+            minStart += this._stickyHeader._d.size;
+          }
+          if (header._d.offsetStart < offsetStart) {
+            topSecIdx = currentSecIdx;
+          } else if (header._d.offsetStart <= minStart) {
+            headerOffsetStart = minStart >= offsetStart ?
+                Math.min(0, header._d.offsetStart - minStart) : 0;
+          } else {
+            break;
+          }
+        } else {
+          topSecIdx = currentSecIdx;
         }
-        let nextStickyCell = SQ.getNext(cell);
-        if (nextStickyCell) {
-          let slideDy = nextStickyCell._d.offsetStart - (offsetStart + cell._d.size);
-          this._position(stickyCell, slideDy < 0 ? slideDy : 0);
-        }
-        cell.style.visibility = 'hidden';
-        stickyCell.style.display = 'block';
-      } else if (stickyCell) {
-        cell.style.visibility = '';
-        stickyCell.style.display = 'none';
+        currentSecIdx++;
       }
-      next = itr.next();
     }
+    // no sticky header found
+    if (topSecIdx == null || !this.shouldHeaderStick(topSecIdx)) {
+      return;
+    }
+    if (!this._stickyHeader || this._stickyHeader._d.section.index !== topSecIdx) {
+      if (this._stickyHeader) {
+        this._pushToReusableQueue(this._stickyHeader);
+      }
+      this._stickyHeader = this._allocate(this._sections[topSecIdx].start);
+      this.containerElement.appendChild(this._stickyHeader);
+      this._stickyHeader._d.size = this.getNodeSize(this._stickyHeader);
+    }
+
+    let currentHeader = this._sections[topSecIdx].header;
+    this._position(this._stickyHeader, headerOffsetStart);
   }
 
   _isolate(cell, yes) {
@@ -868,22 +826,25 @@ class UITableView {
     }
   }
 
-  _pushToReusableQueue(node) {
-    var reusableId = node.dataset.reusableId;
+  _pushToReusableQueue(cell) {
+    var reusableId = cell.dataset.reusableId;
     if (!reusableId) {
       throw new Error('node is missing `dataset.reusableId`');
     }
-    this._renderedQueue.delete(node);
-    if (node._d && this._isolatedCells[node._d.index]) {
+
+    this._renderedQueue.delete(cell);
+
+    if (cell._d && this._isolatedCells[cell._d.index]) {
       return;
     }
     if (!this._reusableQueues[reusableId]) {
       this._reusableQueues[reusableId] = new QueueList();
     }
-    this._reusableQueues[reusableId].push(node);
+    this._reusableQueues[reusableId].push(cell);
   }
 
   dequeueReusableElementWithId(id, args) {
+    var idx = args[args.length - 1].index;
     if (this.isUpdating && this.isIndexRendered(idx)) {
       for (let nodes = this._renderedQueue.asArray(), i = 0; i < nodes.length; i++) {
         if (nodes[i]._d.index === idx) {
@@ -947,15 +908,11 @@ class UITableView {
   }
 
   get numberOfCells() {
-    return 0;
+    var sections = this._getSections();
+    return sections[sections.length - 1].end + 1;
   }
 
-  shouldCellStick(el) {
-    return false;
-  }
-
-
-  shouldHeaderStick(secIdx, el) {
+  shouldHeaderStick(secIdx) {
     return false;
   }
 
@@ -981,10 +938,10 @@ class UITableView {
   getCellElement(cellIdx, sectionIdx) {
     throw new Error(errorMessages.unimplemented);
   }
-  
-  getCellSize(cellIdx, sectionIdx, cellEl) {
+
+  getNodeSize(node) {
     return this.orientation === UITableView.ORIENTATION_VERTICAL ?
-        cellEl.offsetHeight : cellEl.offsetWidth;
+        node.offsetHeight : node.offsetWidth;
   }
 
   /**
@@ -1065,13 +1022,20 @@ module.exports = function factory(props) {
       return props.contentElement || props.scrollingElement;
     }
 
-    get numberOfCells() {
+    getNumberOfCellsInSection(secIdx) {
+      return props.data[secIdx].items.length;
+    }
+
+    get numberOfSections() {
       return props.data.length;
     }
+
   });
 
   tableView.data = props.data;
+  tableView.getHeaderElement = props.getHeaderElement;
   tableView.getCellElement = props.getCellElement;
+  tableView.shouldHeaderStick = props.shouldHeaderStick;
   tableView.mount();
 
   return tableView;

@@ -27,13 +27,20 @@ module.exports = function factory(props) {
       return props.contentElement || props.scrollingElement;
     }
 
-    get numberOfCells() {
+    getNumberOfCellsInSection(secIdx) {
+      return props.data[secIdx].items.length;
+    }
+
+    get numberOfSections() {
       return props.data.length;
     }
+
   });
 
   tableView.data = props.data;
+  tableView.getHeaderElement = props.getHeaderElement;
   tableView.getCellElement = props.getCellElement;
+  tableView.shouldHeaderStick = props.shouldHeaderStick;
   tableView.mount();
 
   return tableView;

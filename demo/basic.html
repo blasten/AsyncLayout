@@ -2,6 +2,7 @@
 <html>
   <head>
     <title>Basic demo</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <style>
       body {
         margin: 0;
@@ -10,11 +11,10 @@
 
       #container {
         position: absolute;
-        top: calc(50% - 250px);
-        left: calc(50% - 400px);
-        border: 1px solid #ccc;
-        width: 800px;
-        height: 500px;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
         overflow: hidden;
       }
 
@@ -22,6 +22,7 @@
         width: 100%;
         height: 100%;
         overflow-y: auto;
+        -webkit-overflow-scrolling: touch;
       }
 
       #content {
@@ -29,10 +30,9 @@
       }
 
       .sticky {
-        background-color: rgba(255, 255, 255, 0.9);
+        background-color: rgba(200, 200, 200, 0.9);
         font-weight: bold;
         padding: 5px 10px;
-        border-bottom: 1px solid #ddd;
       }
 
       .row {
@@ -66,7 +66,7 @@
     </div>
   </div>
 
-    <script src="../UITableView.js"></script>
+    <script src="../UITableView.es5.js"></script>
 
     <script>
       function buildItems(size) {
@@ -90,11 +90,7 @@
 
           data: [{ sectionName: 'Recent', items: buildItems(50) }].concat({ sectionName: 'Yesterday', items: buildItems(50) }),
 
-          numberOfSections() {
-            return 2;
-          },
-
-          shouldHeaderStick(secIdx, el) {
+          shouldHeaderStick(secIdx) {
             return true;
           },
 
@@ -108,10 +104,6 @@
             }
             el.innerText = this.data[sectionIndex].sectionName;
             return el;
-          },
-
-          getNumberOfCellsInSection(sectionIndex) {
-            return this.data[sectionIndex].items.length;
           },
 
           getCellElement(cellIdx, sectionIndex) {
