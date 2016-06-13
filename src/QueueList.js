@@ -46,11 +46,9 @@ class QueueList {
     if (this._rearListItem != null) {
       this._rearListItem.next = listItem;
     }
-
     if (this._peekListItem == null) {
       this._peekListItem = listItem;
     }
-
     this._rearListItem = listItem;
     this._length++;
   }
@@ -65,7 +63,6 @@ class QueueList {
     if (this.has(obj)) {
       return;
     }
-
     var listItem = {
       key: obj,
       previous: null,
@@ -77,11 +74,9 @@ class QueueList {
     if (this._peekListItem != null) {
       this._peekListItem.previous = listItem;
     }
-
     if (this._rearListItem == null) {
       this._rearListItem = listItem;
     }
-
     this._peekListItem = listItem;
     this._length++;
   }
@@ -95,25 +90,19 @@ class QueueList {
     if (!this.has(obj)) {
       return;
     }
-
     var listItem = this._map.get(obj);
-
     if (listItem.previous != null) {
       listItem.previous.next = listItem.next;
     }
-
     if (listItem.next != null) {
       listItem.next.previous = listItem.previous;
     }
-
     if (listItem === this._rearListItem) {
       this._rearListItem = listItem.previous;
     }
-
     if (listItem === this._peekListItem) {
       this._peekListItem = listItem.next;
     }
-
     this._map.delete(obj);
     this._length--;
     return obj;

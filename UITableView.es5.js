@@ -79,11 +79,9 @@ function _classCallCheck(instance, Constructor) { if (!(instance instanceof Cons
           if (this._rearListItem != null) {
             this._rearListItem.next = listItem;
           }
-
           if (this._peekListItem == null) {
             this._peekListItem = listItem;
           }
-
           this._rearListItem = listItem;
           this._length++;
         }
@@ -101,7 +99,6 @@ function _classCallCheck(instance, Constructor) { if (!(instance instanceof Cons
           if (this.has(obj)) {
             return;
           }
-
           var listItem = {
             key: obj,
             previous: null,
@@ -113,11 +110,9 @@ function _classCallCheck(instance, Constructor) { if (!(instance instanceof Cons
           if (this._peekListItem != null) {
             this._peekListItem.previous = listItem;
           }
-
           if (this._rearListItem == null) {
             this._rearListItem = listItem;
           }
-
           this._peekListItem = listItem;
           this._length++;
         }
@@ -134,25 +129,19 @@ function _classCallCheck(instance, Constructor) { if (!(instance instanceof Cons
           if (!this.has(obj)) {
             return;
           }
-
           var listItem = this._map.get(obj);
-
           if (listItem.previous != null) {
             listItem.previous.next = listItem.next;
           }
-
           if (listItem.next != null) {
             listItem.next.previous = listItem.previous;
           }
-
           if (listItem === this._rearListItem) {
             this._rearListItem = listItem.previous;
           }
-
           if (listItem === this._peekListItem) {
             this._peekListItem = listItem.next;
           }
-
           this._map.delete(obj);
           this._length--;
           return obj;
@@ -567,10 +556,10 @@ function _classCallCheck(instance, Constructor) { if (!(instance instanceof Cons
             }
           } else {
             this._sameScrollPosition = 0;
-            var end = this.scrollStart > this._scrollStart;
+            this._scrollToEnd = this.scrollStart > this._scrollStart;
             this._scrollStart = this.scrollStart;
             this._scrollEnd = this.scrollEnd;
-            this._update(end);
+            this._update(this._scrollToEnd);
           }
           requestAnimationFrame(this._scrollUpdate);
         }
@@ -735,7 +724,8 @@ function _classCallCheck(instance, Constructor) { if (!(instance instanceof Cons
             if (cell._d.isHeader) {
               cell._d.section.header = cell;
             }
-            this._appendToContent(cell);
+            this._appendToContent(cell, end);
+
             end ? Q.push(cell) : Q.unshift(cell);
             idx = end ? idx + 1 : idx - 1;
             currentSize++;
@@ -865,9 +855,9 @@ function _classCallCheck(instance, Constructor) { if (!(instance instanceof Cons
         key: "_position",
         value: function _position(node, offsetStart) {
           if (this.orientation === UITableView.ORIENTATION_VERTICAL) {
-            node.style.transform = 'translate3d(0, ' + offsetStart + 'px, 0)';
+            node.style.transform = 'translateY(' + offsetStart + 'px)';
           } else {
-            node.style.transform = 'translate3d(' + offsetStart + 'px, 0, 0)';
+            node.style.transform = 'translateX(' + offsetStart + 'px)';
           }
         }
       }, {
@@ -921,8 +911,6 @@ function _classCallCheck(instance, Constructor) { if (!(instance instanceof Cons
             this.containerElement.appendChild(this._stickyHeader);
             this._stickyHeader._d.size = this.getNodeSize(this._stickyHeader);
           }
-
-          var currentHeader = this._sections[topSecIdx].header;
           this._position(this._stickyHeader, headerOffsetStart);
         }
       }, {
@@ -936,9 +924,17 @@ function _classCallCheck(instance, Constructor) { if (!(instance instanceof Cons
         }
       }, {
         key: "_appendToContent",
-        value: function _appendToContent(node) {
-          if (this.contentElement && node && !node.parentNode) {
-            this.contentElement.appendChild(node);
+        value: function _appendToContent(node, end) {
+          var Q = this._renderedQueue;
+          var dest = this.contentElement;
+          if (node && !node.parentNode) {
+            if (Q.isEmpty()) {
+              dest.appendChild(node);
+            } else if (end) {
+              dest.insertBefore(node, Q.rear.nextSibling);
+            } else {
+              dest.insertBefore(node, Q.peek);
+            }
           }
         }
       }, {
@@ -951,8 +947,8 @@ function _classCallCheck(instance, Constructor) { if (!(instance instanceof Cons
       }, {
         key: "_pushToReusableQueue",
         value: function _pushToReusableQueue(cell) {
-          var reusableId = cell.dataset.reusableId;
-          if (!reusableId) {
+          var id = cell.dataset.reusableId;
+          if (!id) {
             throw new Error('node is missing `dataset.reusableId`');
           }
 
@@ -961,10 +957,12 @@ function _classCallCheck(instance, Constructor) { if (!(instance instanceof Cons
           if (cell._d && this._isolatedCells[cell._d.index]) {
             return;
           }
-          if (!this._reusableQueues[reusableId]) {
-            this._reusableQueues[reusableId] = new QueueList();
+          var rQ = void 0;
+          if (!(rQ = this._reusableQueues[id])) {
+            rQ = new QueueList();
+            this._reusableQueues[id] = rQ;
           }
-          this._reusableQueues[reusableId].push(cell);
+          this._scrollToEnd ? rQ.push(cell) : rQ.unshift(cell);
         }
       }, {
         key: "dequeueReusableElementWithId",
@@ -980,8 +978,9 @@ function _classCallCheck(instance, Constructor) { if (!(instance instanceof Cons
           if (this._isolatedCells[idx]) {
             return this._isolatedCells[idx];
           }
-          if (this._reusableQueues[id]) {
-            return this._reusableQueues[id].pop();
+          var rQ = void 0;
+          if (rQ = this._reusableQueues[id]) {
+            return this._scrollToEnd ? rQ.shift() : rQ.pop();
           }
           return null;
         }
