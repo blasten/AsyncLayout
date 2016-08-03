@@ -65,7 +65,7 @@
     </div>
   </div>
 
-    <script src="../UITableView.es5.js"></script>
+    <script src="../UITableView.js"></script>
 
     <script>
       function buildItems(size) {
@@ -129,11 +129,6 @@
         });
       });
 
-
-      function update(idx) {
-        tableView.data[idx].item = 'Update | ' + tableView.data[idx].item;
-        tableView.reloadCellAtIndex(idx);
-      }
 
       function loadData(cb) {
         var xhr = new XMLHttpRequest();

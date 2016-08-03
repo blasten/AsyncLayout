@@ -14,6 +14,7 @@ class QueueList {
     this._rearListItem = null;
     this._peekListItem = null;
     this._length = 0;
+    this[Symbol.iterator] = this.iterator.bind(this);
   }
 
   /**
@@ -223,7 +224,7 @@ class QueueList {
 
         return {
           value: presentItem ? presentItem.key : null,
-          done: presentItem === lastListItem
+          done: presentItem === null
         };
       }
     };
@@ -273,7 +274,6 @@ class UITableView {
     this._estContentSize = 0;
     this._realContentSize = 0;
     this._sameScrollPosition = -1;
-    this.isUpdating = false;
     this._didScroll = this._didScroll.bind(this);
     this._didResize = this._didResize.bind(this);
     this._scrollUpdate = this._scrollUpdate.bind(this);
@@ -301,53 +301,51 @@ class UITableView {
     this._update(true);
   }
 
-  isIndexRendered(idx) {
-    var Q = this._renderedQueue;
-    return !Q.isEmpty() && idx >= Q.peek._d.index && idx <= Q.rear._d.index;
+  getIdxForCell(cell) {
+    var idx = cell._d.index - cell._d.section.start;
+    return cell._d.section.hasHeader ? idx - 1 : idx;
+  }
+
+  isCellRendered(cellIdx, sectionIdx) {
+    let Q = this._renderedQueue;
+    if (Q.isEmpty()) {
+      return false;
+    }
+    if (sectionIdx < Q.peek._d.section.index || sectionIdx > Q.rear._d.section.index) {
+      return false;
+    }
+    if (cellIdx < this.getIdxForCell(Q.peek) || cellIdx > this.getIdxForCell(Q.rear)) {
+      return false;
+    }
+    return true;
   }
 
   /**
    *
    */
   reloadData() {
-    var Q = this._renderedQueue;
-    if (Q.isEmpty()) {
-      return;
-    }
+    // var Q = this._renderedQueue;
+    // if (Q.isEmpty()) {
+    //   return;
+    // }
 
-    this.isUpdating = true;
-    var node = Q.peek;
-    while (node != null) {
-      this.getCellElement(node._d.index);
-      node = Q.getNext(node);
-    }
-    this.isUpdating = false;
-    this._positionNodes(Q.peek, Q.rear, true);
+    // var node = Q.peek;
+    // while (node != null) {
+    //   this.getCellElement(node._d.index);
+    //   node = Q.getNext(node);
+    // }
+    // this._positionNodes(Q.peek, Q.rear, true);
   }
 
   /**
    *
    */
-  reloadCellAtIndex(idx, animation) {
-    if (!this.isIndexRendered(idx)) {
+  reloadCellAtIndex(cellIdx, sectionIdx) {
+    if (!this.isCellRendered(cellIdx, sectionIdx)) {
       return;
     }
-    animation = animation || { deltaSize: 0 };
-    var willAnimate = Math.abs(animation.deltaSize) > 0;
-    this.isUpdating = true;
-    var cell = this.getCellElement(idx);
-    this.isUpdating = false;
-
-    if (!cell || !cell.parentNode) {
-      return;
-    }
-
-    var newSize = this.getCellSize(cell._d.index, cell);
-    var deltaSize = newSize - cell._d.size;
-
-    return () => {
-
-    };
+    this.getCellElement(cellIdx, sectionIdx, {updating: true});
+    this._positionNodes(this._renderedQueue.peek, this._renderedQueue.rear, true);
   }
 
   scrollToCellIndex(idx) {
@@ -390,18 +388,12 @@ class UITableView {
    *
    */
   insertCellsAtIndex(idx) {
-    if (this.isIndexRendered(idx)) {
-      this.reloadData();
-    }
   }
 
   /**
    *
    */
   deleteCellsAtIndex(idx) {
-    if (this.isIndexRendered(idx)) {
-      this.reloadData();
-    }
   }
 
   _updateCachedStates() {
@@ -616,7 +608,6 @@ class UITableView {
         cell._d.section.header = cell;
       }
       this._appendToContent(cell, end);
-
       end ? Q.push(cell) : Q.unshift(cell);
       idx = end ? idx + 1 : idx - 1;
       currentSize++;
@@ -634,12 +625,18 @@ class UITableView {
     var cell = isHeader ? this.getHeaderElement(section.index, section) :
         this.getCellElement(idx - section.start - 1, section.index, section);
 
+    if (!cell) {
+      return null;
+    }
     if (!cell._d) {
       this._setCellStyles(cell);
     }
     cell._d = cell._d || {};
     cell._d.index = idx;
     cell._d.isHeader = isHeader;
+    if (isHeader) {
+      section.hasHeader = true;
+    }
     cell._d.section = section;
     cell._d.size = 0;
     cell._d.offsetStart = 0;
@@ -660,7 +657,13 @@ class UITableView {
 
     while (secIdx <= maxSec) {
       endIndex = this.getNumberOfCellsInSection(secIdx) + startIdx;
-      sections.push({ index: secIdx, start: startIdx, end: endIndex, header: null });
+      sections.push({
+        index: secIdx,
+        start: startIdx,
+        end: endIndex,
+        header: null,
+        hasHeader: false
+      });
       startIdx = endIndex + 1;
       secIdx++;
     }
@@ -846,13 +849,20 @@ class UITableView {
 
   dequeueReusableElementWithId(id, args) {
     var idx = args[args.length - 1].index;
-    if (this.isUpdating && this.isIndexRendered(idx)) {
-      for (let nodes = this._renderedQueue.asArray(), i = 0; i < nodes.length; i++) {
-        if (nodes[i]._d.index === idx) {
-          return nodes[i];
+    if (args.length === 2) {
+      let [secIdx, opts] = args;
+      //
+    } else if (args.length === 3) {
+      let [cellIdx, secIdx, opts] = args;
+      if (this.isCellRendered(cellIdx, secIdx)) {
+        for (let cell of this._renderedQueue) {
+          if (cell._d.section.index === secIdx && this.getIdxForCell(cell) === cellIdx) {
+            return cell;
+          }
         }
       }
     }
+
     if (this._isolatedCells[idx]) {
       return this._isolatedCells[idx];
     }

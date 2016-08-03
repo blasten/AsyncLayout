@@ -2,6 +2,8 @@
 
 var _typeof = typeof Symbol === "function" && typeof Symbol.iterator === "symbol" ? function (obj) { return typeof obj; } : function (obj) { return obj && typeof Symbol === "function" && obj.constructor === Symbol ? "symbol" : typeof obj; };
 
+var _slicedToArray = function () { function sliceIterator(arr, i) { var _arr = []; var _n = true; var _d = false; var _e = undefined; try { for (var _i = arr[Symbol.iterator](), _s; !(_n = (_s = _i.next()).done); _n = true) { _arr.push(_s.value); if (i && _arr.length === i) break; } } catch (err) { _d = true; _e = err; } finally { try { if (!_n && _i["return"]) _i["return"](); } finally { if (_d) throw _e; } } return _arr; } return function (arr, i) { if (Array.isArray(arr)) { return arr; } else if (Symbol.iterator in Object(arr)) { return sliceIterator(arr, i); } else { throw new TypeError("Invalid attempt to destructure non-iterable instance"); } }; }();
+
 var _createClass = function () { function defineProperties(target, props) { for (var i = 0; i < props.length; i++) { var descriptor = props[i]; descriptor.enumerable = descriptor.enumerable || false; descriptor.configurable = true; if ("value" in descriptor) descriptor.writable = true; Object.defineProperty(target, descriptor.key, descriptor); } } return function (Constructor, protoProps, staticProps) { if (protoProps) defineProperties(Constructor.prototype, protoProps); if (staticProps) defineProperties(Constructor, staticProps); return Constructor; }; }();
 
 function _possibleConstructorReturn(self, call) { if (!self) { throw new ReferenceError("this hasn't been initialised - super() hasn't been called"); } return call && (typeof call === "object" || typeof call === "function") ? call : self; }
@@ -39,6 +41,7 @@ function _classCallCheck(instance, Constructor) { if (!(instance instanceof Cons
         this._rearListItem = null;
         this._peekListItem = null;
         this._length = 0;
+        this[Symbol.iterator] = this.iterator.bind(this);
       }
 
       /**
@@ -253,7 +256,7 @@ function _classCallCheck(instance, Constructor) { if (!(instance instanceof Cons
 
               return {
                 value: presentItem ? presentItem.key : null,
-                done: presentItem === lastListItem
+                done: presentItem === null
               };
             }
           };
@@ -336,7 +339,6 @@ function _classCallCheck(instance, Constructor) { if (!(instance instanceof Cons
         this._estContentSize = 0;
         this._realContentSize = 0;
         this._sameScrollPosition = -1;
-        this.isUpdating = false;
         this._didScroll = this._didScroll.bind(this);
         this._didResize = this._didResize.bind(this);
         this._scrollUpdate = this._scrollUpdate.bind(this);
@@ -368,10 +370,25 @@ function _classCallCheck(instance, Constructor) { if (!(instance instanceof Cons
           this._update(true);
         }
       }, {
-        key: "isIndexRendered",
-        value: function isIndexRendered(idx) {
+        key: "getIdxForCell",
+        value: function getIdxForCell(cell) {
+          var idx = cell._d.index - cell._d.section.start;
+          return cell._d.section.hasHeader ? idx - 1 : idx;
+        }
+      }, {
+        key: "isCellRendered",
+        value: function isCellRendered(cellIdx, sectionIdx) {
           var Q = this._renderedQueue;
-          return !Q.isEmpty() && idx >= Q.peek._d.index && idx <= Q.rear._d.index;
+          if (Q.isEmpty()) {
+            return false;
+          }
+          if (sectionIdx < Q.peek._d.section.index || sectionIdx > Q.rear._d.section.index) {
+            return false;
+          }
+          if (cellIdx < this.getIdxForCell(Q.peek) || cellIdx > this.getIdxForCell(Q.rear)) {
+            return false;
+          }
+          return true;
         }
 
         /**
@@ -380,21 +397,19 @@ function _classCallCheck(instance, Constructor) { if (!(instance instanceof Cons
 
       }, {
         key: "reloadData",
-        value: function reloadData() {
-          var Q = this._renderedQueue;
-          if (Q.isEmpty()) {
-            return;
-          }
+        value: function reloadData() {}
+        // var Q = this._renderedQueue;
+        // if (Q.isEmpty()) {
+        //   return;
+        // }
 
-          this.isUpdating = true;
-          var node = Q.peek;
-          while (node != null) {
-            this.getCellElement(node._d.index);
-            node = Q.getNext(node);
-          }
-          this.isUpdating = false;
-          this._positionNodes(Q.peek, Q.rear, true);
-        }
+        // var node = Q.peek;
+        // while (node != null) {
+        //   this.getCellElement(node._d.index);
+        //   node = Q.getNext(node);
+        // }
+        // this._positionNodes(Q.peek, Q.rear, true);
+
 
         /**
          *
@@ -402,24 +417,12 @@ function _classCallCheck(instance, Constructor) { if (!(instance instanceof Cons
 
       }, {
         key: "reloadCellAtIndex",
-        value: function reloadCellAtIndex(idx, animation) {
-          if (!this.isIndexRendered(idx)) {
+        value: function reloadCellAtIndex(cellIdx, sectionIdx) {
+          if (!this.isCellRendered(cellIdx, sectionIdx)) {
             return;
           }
-          animation = animation || { deltaSize: 0 };
-          var willAnimate = Math.abs(animation.deltaSize) > 0;
-          this.isUpdating = true;
-          var cell = this.getCellElement(idx);
-          this.isUpdating = false;
-
-          if (!cell || !cell.parentNode) {
-            return;
-          }
-
-          var newSize = this.getCellSize(cell._d.index, cell);
-          var deltaSize = newSize - cell._d.size;
-
-          return function () {};
+          this.getCellElement(cellIdx, sectionIdx, { updating: true });
+          this._positionNodes(this._renderedQueue.peek, this._renderedQueue.rear, true);
         }
       }, {
         key: "scrollToCellIndex",
@@ -468,11 +471,7 @@ function _classCallCheck(instance, Constructor) { if (!(instance instanceof Cons
 
       }, {
         key: "insertCellsAtIndex",
-        value: function insertCellsAtIndex(idx) {
-          if (this.isIndexRendered(idx)) {
-            this.reloadData();
-          }
-        }
+        value: function insertCellsAtIndex(idx) {}
 
         /**
          *
@@ -480,11 +479,7 @@ function _classCallCheck(instance, Constructor) { if (!(instance instanceof Cons
 
       }, {
         key: "deleteCellsAtIndex",
-        value: function deleteCellsAtIndex(idx) {
-          if (this.isIndexRendered(idx)) {
-            this.reloadData();
-          }
-        }
+        value: function deleteCellsAtIndex(idx) {}
       }, {
         key: "_updateCachedStates",
         value: function _updateCachedStates() {
@@ -728,7 +723,6 @@ function _classCallCheck(instance, Constructor) { if (!(instance instanceof Cons
               cell._d.section.header = cell;
             }
             this._appendToContent(cell, end);
-
             end ? Q.push(cell) : Q.unshift(cell);
             idx = end ? idx + 1 : idx - 1;
             currentSize++;
@@ -748,12 +742,18 @@ function _classCallCheck(instance, Constructor) { if (!(instance instanceof Cons
           var isHeader = Boolean(section.start === idx);
           var cell = isHeader ? this.getHeaderElement(section.index, section) : this.getCellElement(idx - section.start - 1, section.index, section);
 
+          if (!cell) {
+            return null;
+          }
           if (!cell._d) {
             this._setCellStyles(cell);
           }
           cell._d = cell._d || {};
           cell._d.index = idx;
           cell._d.isHeader = isHeader;
+          if (isHeader) {
+            section.hasHeader = true;
+          }
           cell._d.section = section;
           cell._d.size = 0;
           cell._d.offsetStart = 0;
@@ -775,7 +775,13 @@ function _classCallCheck(instance, Constructor) { if (!(instance instanceof Cons
 
           while (secIdx <= maxSec) {
             endIndex = this.getNumberOfCellsInSection(secIdx) + startIdx;
-            sections.push({ index: secIdx, start: startIdx, end: endIndex, header: null });
+            sections.push({
+              index: secIdx,
+              start: startIdx,
+              end: endIndex,
+              header: null,
+              hasHeader: false
+            });
             startIdx = endIndex + 1;
             secIdx++;
           }
@@ -971,13 +977,49 @@ function _classCallCheck(instance, Constructor) { if (!(instance instanceof Cons
         key: "dequeueReusableElementWithId",
         value: function dequeueReusableElementWithId(id, args) {
           var idx = args[args.length - 1].index;
-          if (this.isUpdating && this.isIndexRendered(idx)) {
-            for (var nodes = this._renderedQueue.asArray(), i = 0; i < nodes.length; i++) {
-              if (nodes[i]._d.index === idx) {
-                return nodes[i];
+          if (args.length === 2) {
+            var _args = _slicedToArray(args, 2);
+
+            var secIdx = _args[0];
+            var opts = _args[1];
+            //
+          } else if (args.length === 3) {
+              var _args2 = _slicedToArray(args, 3);
+
+              var cellIdx = _args2[0];
+              var _secIdx = _args2[1];
+              var _opts = _args2[2];
+
+              if (this.isCellRendered(cellIdx, _secIdx)) {
+                var _iteratorNormalCompletion = true;
+                var _didIteratorError = false;
+                var _iteratorError = undefined;
+
+                try {
+                  for (var _iterator = this._renderedQueue[Symbol.iterator](), _step; !(_iteratorNormalCompletion = (_step = _iterator.next()).done); _iteratorNormalCompletion = true) {
+                    var cell = _step.value;
+
+                    if (cell._d.section.index === _secIdx && this.getIdxForCell(cell) === cellIdx) {
+                      return cell;
+                    }
+                  }
+                } catch (err) {
+                  _didIteratorError = true;
+                  _iteratorError = err;
+                } finally {
+                  try {
+                    if (!_iteratorNormalCompletion && _iterator.return) {
+                      _iterator.return();
+                    }
+                  } finally {
+                    if (_didIteratorError) {
+                      throw _iteratorError;
+                    }
+                  }
+                }
               }
             }
-          }
+
           if (this._isolatedCells[idx]) {
             return this._isolatedCells[idx];
           }

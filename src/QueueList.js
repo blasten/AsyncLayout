@@ -13,6 +13,7 @@ class QueueList {
     this._rearListItem = null;
     this._peekListItem = null;
     this._length = 0;
+    this[Symbol.iterator] = this.iterator.bind(this);
   }
 
   /**
@@ -222,7 +223,7 @@ class QueueList {
 
         return {
           value: presentItem ? presentItem.key : null,
-          done: presentItem === lastListItem
+          done: presentItem === null
         };
       }
     };
