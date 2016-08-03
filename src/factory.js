@@ -13,7 +13,7 @@
 'use strict';
 
 module.exports = function factory(props) {
-  var tableView = new (class CustomUITableView extends UITableView {
+  var tableView = new (class extends UITableView {
 
     get scrollingElement() {
       return props.scrollingElement;
