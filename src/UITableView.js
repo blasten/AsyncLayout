@@ -26,12 +26,14 @@ class UITableView {
     this._sameScrollPosition = -1;
     this.isUpdating = false;
     this._didScroll = this._didScroll.bind(this);
+    this._didResize = this._didResize.bind(this);
     this._scrollUpdate = this._scrollUpdate.bind(this);
     this._shouldReuse = this._shouldReuse.bind(this);
   }
 
   mount() {
     this.scrollingElement.addEventListener('scroll', this._didScroll);
+    window.addEventListener('resize', this._didResize);
     this._setContainerStyles();
     this._updateCachedStates();
     this._reconcile();
@@ -39,6 +41,7 @@ class UITableView {
 
   unmount() {
     this.scrollingElement.removeEventListener('scroll', this._didScroll);
+    window.removeEventListener('resize', this._didResize);
   }
 
   _reconcile() {
@@ -692,6 +695,15 @@ class UITableView {
   getNodeSize(node) {
     return this.orientation === UITableView.ORIENTATION_VERTICAL ?
         node.offsetHeight : node.offsetWidth;
+  }
+
+  _didResize() {
+    let Q = this._renderedQueue;
+    if (!Q.isEmpty()) {
+      this._sumNodeSizes = this._positionNodes(Q.peek, Q.rear, true);
+      this._sumNodeLength = Q.length;
+      this._update(true);
+    }
   }
 
   /**

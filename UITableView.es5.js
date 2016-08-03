@@ -338,6 +338,7 @@ function _classCallCheck(instance, Constructor) { if (!(instance instanceof Cons
         this._sameScrollPosition = -1;
         this.isUpdating = false;
         this._didScroll = this._didScroll.bind(this);
+        this._didResize = this._didResize.bind(this);
         this._scrollUpdate = this._scrollUpdate.bind(this);
         this._shouldReuse = this._shouldReuse.bind(this);
       }
@@ -346,6 +347,7 @@ function _classCallCheck(instance, Constructor) { if (!(instance instanceof Cons
         key: "mount",
         value: function mount() {
           this.scrollingElement.addEventListener('scroll', this._didScroll);
+          window.addEventListener('resize', this._didResize);
           this._setContainerStyles();
           this._updateCachedStates();
           this._reconcile();
@@ -354,6 +356,7 @@ function _classCallCheck(instance, Constructor) { if (!(instance instanceof Cons
         key: "unmount",
         value: function unmount() {
           this.scrollingElement.removeEventListener('scroll', this._didScroll);
+          window.removeEventListener('resize', this._didResize);
         }
       }, {
         key: "_reconcile",
@@ -1025,6 +1028,16 @@ function _classCallCheck(instance, Constructor) { if (!(instance instanceof Cons
         value: function getNodeSize(node) {
           return this.orientation === UITableView.ORIENTATION_VERTICAL ? node.offsetHeight : node.offsetWidth;
         }
+      }, {
+        key: "_didResize",
+        value: function _didResize() {
+          var Q = this._renderedQueue;
+          if (!Q.isEmpty()) {
+            this._sumNodeSizes = this._positionNodes(Q.peek, Q.rear, true);
+            this._sumNodeLength = Q.length;
+            this._update(true);
+          }
+        }
 
         /**
          * Factory for UITableView
@@ -1146,15 +1159,15 @@ function _classCallCheck(instance, Constructor) { if (!(instance instanceof Cons
 
     module.exports = function factory(props) {
       var tableView = new (function (_UITableView) {
-        _inherits(CustomUITableView, _UITableView);
+        _inherits(_class, _UITableView);
 
-        function CustomUITableView() {
-          _classCallCheck(this, CustomUITableView);
+        function _class() {
+          _classCallCheck(this, _class);
 
-          return _possibleConstructorReturn(this, Object.getPrototypeOf(CustomUITableView).apply(this, arguments));
+          return _possibleConstructorReturn(this, Object.getPrototypeOf(_class).apply(this, arguments));
         }
 
-        _createClass(CustomUITableView, [{
+        _createClass(_class, [{
           key: "getNumberOfCellsInSection",
           value: function getNumberOfCellsInSection(secIdx) {
             return props.data[secIdx].items.length;
@@ -1181,7 +1194,7 @@ function _classCallCheck(instance, Constructor) { if (!(instance instanceof Cons
           }
         }]);
 
-        return CustomUITableView;
+        return _class;
       }(UITableView))();
 
       tableView.data = props.data;
