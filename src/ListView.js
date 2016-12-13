@@ -1,30 +1,23 @@
 import Recycler from './Recycler';
 import DomPool from './DomPool';
-import styles from './list-view-styles';
+import {listViewStyles} from './list-view-styles';
 
 export default class ListView extends HTMLElement {
   constructor() {
-      super();
-    this._props = {};
-    const r = new Recycler();
-
-    this.attachShadow({mode: 'open'})
-      .innerHTML = `
-      <div id="scrollingElement" style="${styles.yScrollable}">
-        <div id="parentContainer" style="${styles.parentContainer}">
-          <slot></slot>
-        </div>
-      </div>`;
-
+    super();
+    this.attachShadow({mode: 'open'}).innerHTML = this._getTemplate(listViewStyles());
     this._$scrollingElement = this.shadowRoot.getElementById('scrollingElement');
     this._$parentContainer = this.shadowRoot.getElementById('parentContainer');
-    r.pool = new DomPool();
-    r.parentContainer = this._$parentContainer;
-    r.initMetaForIndex = this._initMetaForIndex;
-    r.shouldRecycle = this._shouldRecycle;
-    r.layout = this._layout;
-    r.makeActive = this._makeActive;
-    this._recycler = r;
+    this._props = {};
+    const recycler = new Recycler();
+    recycler.pool = new DomPool();
+    recycler.parentContainer = this._$parentContainer;
+    recycler.initMetaForIndex = this._initMetaForIndex;
+    recycler.shouldRecycle = this._shouldRecycle;
+    recycler.layout = this._layout;
+    recycler.makeActive = this._makeActive;
+    this._recycler = recycler;
+    this._setProps(['numberOfRows', 'domForRow']);
   }
 
   connectedCallback() {
@@ -105,6 +98,24 @@ export default class ListView extends HTMLElement {
     else {
       meta.y = 0;
     }
+  }
+
+  _getTemplate(styles) {
+    return `<div id="scrollingElement" style="${styles.yScrollable}">
+      <div id="parentContainer" style="${styles.parentContainer}">
+        <slot></slot>
+      </div>
+    </div>`;
+  }
+
+  _setProps(props) {
+    props.forEach((prop) => {
+      if (this.hasOwnProperty(prop)) {
+        let propVal = this[prop];
+        delete this[prop];
+        this[prop] = propVal;
+      }
+    });
   }
 }
 

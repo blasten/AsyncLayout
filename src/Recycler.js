@@ -3,17 +3,19 @@ import {forIdleTime, forBeforePaint} from './Async';
 
 export default class Recycler {
   constructor() {
+    this._size = 0;
     this._pool = null;
+    this._parentContainer = null;
     this._jobId = 0;
     this._nodes = [];
     this._isMounted  = false;
-    this.meta = new WeekMap();
+    this.meta = new WeakMap();
   }
 
   async mount() {
     await forBeforePaint();
     this._isMounted = true;
-    this.putNodesInPool(this.parentContainer.children);
+    this._putNodesInPool(this.parentContainer.children);
     await this.recycle();
   }
 
@@ -30,20 +32,20 @@ export default class Recycler {
     if (this._jobId != jobId) {
       return;
     }
-    while (!this._isClientFull(from)) {
+    while (!this.isClientFull(this._nodes, this._metas, from)) {
       this._populateClient(from, nextIncrement);
       nextIncrement = nextIncrement * 2;
     }
-    if (!this._hasEnoughContent(from)) {
+    if (!this.hasEnoughContent(this._nodes, this._metas, from)) {
       let idle = await forIdleTime();
       this._populateClient(from, nextIncrement);
       await this._recycle(from, nextIncrement * 2, jobId);
     }
   }
 
-  putNodesInPool(nodes) {
+  _putNodesInPool(nodes) {
     Array.from(nodes).forEach(node => {
-      this._pool.push(node.dataset.poolId || 0, node);
+      this.pool.push(node.dataset.poolId || 0, node);
     });
   }
 
@@ -115,6 +117,7 @@ export default class Recycler {
   }
 
   shouldRecycle(node) {
+    return false;
   }
 
   layout(node, idx, meta, from) {
@@ -127,12 +130,20 @@ export default class Recycler {
     return null;
   }
 
-  get size() {
-    return 0;
+  isClientFull(nodes, metas, from) {
+    return true;
   }
 
-  get parentContainer() {
-    return null;
+  hasEnoughContent(nodes, metas, from) {
+    return true;
+  }
+
+  set size(size) {
+    this._size = size;
+  }
+
+  get size() {
+    return this._size;
   }
 
   _pushToClient(node, from) {
@@ -147,7 +158,7 @@ export default class Recycler {
 
   _putInPool(node) {
     let meta = this.meta.get(node);
-    this._pool.push(meta.poolId, node);
+    this.pool.push(meta.poolId, node);
   }
 
   _popNodeFromPool(from) {
@@ -165,7 +176,7 @@ export default class Recycler {
       idx = this.meta.get(nodes[nodes.length - 1]).idx + 1;
       poolId = idx < this.size ? this.poolIdForIndex(idx) : null;
     }
-    const node = this._pool.pop(poolId);
+    const node = this.pool.pop(poolId);
     if (node) {
       this.nodeForIndex(idx, node);
       this.meta.set(node, this.initMetaForIndex(idx, node));
@@ -210,6 +221,14 @@ export default class Recycler {
 
   get pool() {
     return this._pool;
+  }
+
+  set parentContainer(node) {
+    this._parentContainer = node;
+  }
+
+  get parentContainer() {
+    return this._parentContainer;
   }
 
   static get START() {

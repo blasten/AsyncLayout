@@ -39,11 +39,13 @@ function forBeforePaint() {
 
 class Recycler {
   constructor() {
+    this._size = 0;
     this._pool = null;
+    this._parentContainer = null;
     this._jobId = 0;
     this._nodes = [];
     this._isMounted = false;
-    this.meta = new WeekMap();
+    this.meta = new WeakMap();
   }
 
   mount() {
@@ -53,7 +55,7 @@ class Recycler {
       return forBeforePaint();
     }).then(function () {
       _this._isMounted = true;
-      _this.putNodesInPool(_this.parentElement.children);
+      _this._putNodesInPool(_this.parentContainer.children);
       return _this.recycle();
     }).then(function () {});
   }
@@ -78,11 +80,11 @@ class Recycler {
 
     return Promise.resolve().then(function () {
       if (!(_this5._jobId != jobId)) {
-        while (!_this5._isClientFull(from)) {
+        while (!_this5.isClientFull(_this5._nodes, _this5._metas, from)) {
           _this5._populateClient(from, nextIncrement);
           nextIncrement = nextIncrement * 2;
         }
-        if (!_this5._hasEnoughContent(from)) {
+        if (!_this5.hasEnoughContent(_this5._nodes, _this5._metas, from)) {
           return Promise.resolve().then(function () {
             return forIdleTime();
           }).then(function (_resp) {
@@ -95,9 +97,9 @@ class Recycler {
     }).then(function () {});
   }
 
-  putNodesInPool(nodes) {
+  _putNodesInPool(nodes) {
     Array.from(nodes).forEach(node => {
-      this._pool.push(node.dataset.poolId || 0, node);
+      this.pool.push(node.dataset.poolId || 0, node);
     });
   }
 
@@ -141,7 +143,9 @@ class Recycler {
     }
   }
 
-  shouldRecycle(node) {}
+  shouldRecycle(node) {
+    return false;
+  }
 
   layout(node, idx, meta, from) {}
 
@@ -151,27 +155,35 @@ class Recycler {
     return null;
   }
 
-  get size() {
-    return 0;
+  isClientFull(nodes, metas, from) {
+    return true;
   }
 
-  get parentElement() {
-    return null;
+  hasEnoughContent(nodes, metas, from) {
+    return true;
+  }
+
+  set size(size) {
+    this._size = size;
+  }
+
+  get size() {
+    return this._size;
   }
 
   _pushToClient(node, from) {
     const nodes = this._nodes;
-    const parentElement = this.parentElement;
+    const parentContainer = this.parentContainer;
     from == Recycler.START ? nodes.unshift(node) : nodes.push(node);
 
-    if (parentElement && node.parentElement !== parentElement) {
-      parentElement.appendChild(node);
+    if (parentContainer && node.parentContainer !== parentContainer) {
+      parentContainer.appendChild(node);
     }
   }
 
   _putInPool(node) {
     let meta = this.meta.get(node);
-    this._pool.push(meta.poolId, node);
+    this.pool.push(meta.poolId, node);
   }
 
   _popNodeFromPool(from) {
@@ -187,7 +199,7 @@ class Recycler {
       idx = this.meta.get(nodes[nodes.length - 1]).idx + 1;
       poolId = idx < this.size ? this.poolIdForIndex(idx) : null;
     }
-    const node = this._pool.pop(poolId);
+    const node = this.pool.pop(poolId);
     if (node) {
       this.nodeForIndex(idx, node);
       this.meta.set(node, this.initMetaForIndex(idx, node));
@@ -232,6 +244,14 @@ class Recycler {
     return this._pool;
   }
 
+  set parentContainer(node) {
+    this._parentContainer = node;
+  }
+
+  get parentContainer() {
+    return this._parentContainer;
+  }
+
   static get START() {
     return 1;
   }
@@ -241,40 +261,39 @@ class Recycler {
   }
 }
 
-var styles = {
-  classes: `
-
-  `
-};
+function listViewStyles() {
+  return {
+    yScrollable: `
+      overflow-y: auto;
+      overflow-x: hidden;
+    `,
+    parentContainer: `
+      position: relative;
+    `,
+    itemContainer: `
+      position: absolute;
+      top: 0px;
+      will-change: transform;
+    `
+  };
+}
 
 class ListView extends HTMLElement {
   constructor() {
     super();
-    this._props = {};
-    const r = new Recycler();
-
-    this.attachShadow({ mode: 'open' }).innerHTML = `
-      <style>
-        :host {
-          display: block;
-        }
-        ${ styles.classes }
-      </style>
-      <div id="scrollingElement">
-        <div id="parentElement">
-          <slot></slot>
-        </div>
-      </div>`;
-
+    this.attachShadow({ mode: 'open' }).innerHTML = this._getTemplate(listViewStyles());
     this._$scrollingElement = this.shadowRoot.getElementById('scrollingElement');
-    this._$parentElement = this.shadowRoot.getElementById('contentElement');
-    r.pool = new DomPool();
-    r.parentElement = this._$parentElement;
-    r.initMetaForIndex = this._initMetaForIndex;
-    r.shouldRecycle = this._shouldRecycle;
-    r.layout = this._layout;
-    r.makeActive = this._makeActive;
-    this._recycler = r;
+    this._$parentContainer = this.shadowRoot.getElementById('parentContainer');
+    this._props = {};
+    const recycler = new Recycler();
+    recycler.pool = new DomPool();
+    recycler.parentContainer = this._$parentContainer;
+    recycler.initMetaForIndex = this._initMetaForIndex;
+    recycler.shouldRecycle = this._shouldRecycle;
+    recycler.layout = this._layout;
+    recycler.makeActive = this._makeActive;
+    this._recycler = recycler;
+    this._setProps(['numberOfRows', 'domForRow']);
   }
 
   connectedCallback() {
@@ -331,6 +350,12 @@ class ListView extends HTMLElement {
   }
 
   _layout(node, meta) {
+    // Set initial styles.
+    if (node.style.position != 'absolute') {
+      node.style.position = 'absolute';
+      node.style.top = '0px';
+      node.style.willChange = 'transform';
+    }
     transform(node, `translateY(${ meta.y }px)`);
   }
 
@@ -346,6 +371,24 @@ class ListView extends HTMLElement {
     } else {
       meta.y = 0;
     }
+  }
+
+  _getTemplate(styles) {
+    return `<div id="scrollingElement" style="${ styles.yScrollable }">
+      <div id="parentContainer" style="${ styles.parentContainer }">
+        <slot></slot>
+      </div>
+    </div>`;
+  }
+
+  _setProps(props) {
+    props.forEach(prop => {
+      if (this.hasOwnProperty(prop)) {
+        let propVal = this[prop];
+        delete this[prop];
+        this[prop] = propVal;
+      }
+    });
   }
 }
 

@@ -163,11 +163,13 @@ var Recycler = function () {
   function Recycler() {
     classCallCheck(this, Recycler);
 
+    this._size = 0;
     this._pool = null;
+    this._parentContainer = null;
     this._jobId = 0;
     this._nodes = [];
     this._isMounted = false;
-    this.meta = new WeekMap();
+    this.meta = new WeakMap();
   }
 
   createClass(Recycler, [{
@@ -179,7 +181,7 @@ var Recycler = function () {
         return forBeforePaint();
       }).then(function () {
         _this2._isMounted = true;
-        _this2.putNodesInPool(_this2.parentElement.children);
+        _this2._putNodesInPool(_this2.parentContainer.children);
         return _this2.recycle();
       }).then(function () {});
     }
@@ -207,11 +209,11 @@ var Recycler = function () {
 
       return Promise.resolve().then(function () {
         if (!(_this6._jobId != jobId)) {
-          while (!_this6._isClientFull(from)) {
+          while (!_this6.isClientFull(_this6._nodes, _this6._metas, from)) {
             _this6._populateClient(from, nextIncrement);
             nextIncrement = nextIncrement * 2;
           }
-          if (!_this6._hasEnoughContent(from)) {
+          if (!_this6.hasEnoughContent(_this6._nodes, _this6._metas, from)) {
             return Promise.resolve().then(function () {
               return forIdleTime();
             }).then(function (_resp) {
@@ -225,12 +227,12 @@ var Recycler = function () {
       }).then(function () {});
     }
   }, {
-    key: 'putNodesInPool',
-    value: function putNodesInPool(nodes) {
+    key: '_putNodesInPool',
+    value: function _putNodesInPool(nodes) {
       var _this = this;
 
       Array.from(nodes).forEach(function (node) {
-        _this._pool.push(node.dataset.poolId || 0, node);
+        _this.pool.push(node.dataset.poolId || 0, node);
       });
     }
   }, {
@@ -277,7 +279,9 @@ var Recycler = function () {
     }
   }, {
     key: 'shouldRecycle',
-    value: function shouldRecycle(node) {}
+    value: function shouldRecycle(node) {
+      return false;
+    }
   }, {
     key: 'layout',
     value: function layout(node, idx, meta, from) {}
@@ -290,21 +294,31 @@ var Recycler = function () {
       return null;
     }
   }, {
+    key: 'isClientFull',
+    value: function isClientFull(nodes, metas, from) {
+      return true;
+    }
+  }, {
+    key: 'hasEnoughContent',
+    value: function hasEnoughContent(nodes, metas, from) {
+      return true;
+    }
+  }, {
     key: '_pushToClient',
     value: function _pushToClient(node, from) {
       var nodes = this._nodes;
-      var parentElement = this.parentElement;
+      var parentContainer = this.parentContainer;
       from == Recycler.START ? nodes.unshift(node) : nodes.push(node);
 
-      if (parentElement && node.parentElement !== parentElement) {
-        parentElement.appendChild(node);
+      if (parentContainer && node.parentContainer !== parentContainer) {
+        parentContainer.appendChild(node);
       }
     }
   }, {
     key: '_putInPool',
     value: function _putInPool(node) {
       var meta = this.meta.get(node);
-      this._pool.push(meta.poolId, node);
+      this.pool.push(meta.poolId, node);
     }
   }, {
     key: '_popNodeFromPool',
@@ -322,7 +336,7 @@ var Recycler = function () {
         idx = this.meta.get(nodes[nodes.length - 1]).idx + 1;
         poolId = idx < this.size ? this.poolIdForIndex(idx) : null;
       }
-      var node = this._pool.pop(poolId);
+      var node = this.pool.pop(poolId);
       if (node) {
         this.nodeForIndex(idx, node);
         this.meta.set(node, this.initMetaForIndex(idx, node));
@@ -358,13 +372,11 @@ var Recycler = function () {
     }
   }, {
     key: 'size',
+    set: function set(size) {
+      this._size = size;
+    },
     get: function get() {
-      return 0;
-    }
-  }, {
-    key: 'parentElement',
-    get: function get() {
-      return null;
+      return this._size;
     }
   }, {
     key: 'pool',
@@ -377,6 +389,14 @@ var Recycler = function () {
     },
     get: function get() {
       return this._pool;
+    }
+  }, {
+    key: 'parentContainer',
+    set: function set(node) {
+      this._parentContainer = node;
+    },
+    get: function get() {
+      return this._parentContainer;
     }
   }], [{
     key: 'START',
@@ -392,9 +412,13 @@ var Recycler = function () {
   return Recycler;
 }();
 
-var styles = {
-  classes: "\n\n  "
-};
+function listViewStyles() {
+  return {
+    yScrollable: "\n      overflow-y: auto;\n      overflow-x: hidden;\n    ",
+    parentContainer: "\n      position: relative;\n    ",
+    itemContainer: "\n      position: absolute;\n      top: 0px;\n      will-change: transform;\n    "
+  };
+}
 
 var ListView = function (_HTMLElement) {
   inherits(ListView, _HTMLElement);
@@ -404,20 +428,19 @@ var ListView = function (_HTMLElement) {
 
     var _this = possibleConstructorReturn(this, (ListView.__proto__ || Object.getPrototypeOf(ListView)).call(this));
 
-    _this._props = {};
-    var r = new Recycler();
-
-    _this.attachShadow({ mode: 'open' }).innerHTML = '\n      <style>\n        :host {\n          display: block;\n        }\n        ' + styles.classes + '\n      </style>\n      <div id="scrollingElement">\n        <div id="parentElement">\n          <slot></slot>\n        </div>\n      </div>';
-
+    _this.attachShadow({ mode: 'open' }).innerHTML = _this._getTemplate(listViewStyles());
     _this._$scrollingElement = _this.shadowRoot.getElementById('scrollingElement');
-    _this._$parentElement = _this.shadowRoot.getElementById('contentElement');
-    r.pool = new DomPool();
-    r.parentElement = _this._$parentElement;
-    r.initMetaForIndex = _this._initMetaForIndex;
-    r.shouldRecycle = _this._shouldRecycle;
-    r.layout = _this._layout;
-    r.makeActive = _this._makeActive;
-    _this._recycler = r;
+    _this._$parentContainer = _this.shadowRoot.getElementById('parentContainer');
+    _this._props = {};
+    var recycler = new Recycler();
+    recycler.pool = new DomPool();
+    recycler.parentContainer = _this._$parentContainer;
+    recycler.initMetaForIndex = _this._initMetaForIndex;
+    recycler.shouldRecycle = _this._shouldRecycle;
+    recycler.layout = _this._layout;
+    recycler.makeActive = _this._makeActive;
+    _this._recycler = recycler;
+    _this._setProps(['numberOfRows', 'domForRow']);
     return _this;
   }
 
@@ -451,6 +474,12 @@ var ListView = function (_HTMLElement) {
   }, {
     key: '_layout',
     value: function _layout(node, meta) {
+      // Set initial styles.
+      if (node.style.position != 'absolute') {
+        node.style.position = 'absolute';
+        node.style.top = '0px';
+        node.style.willChange = 'transform';
+      }
       transform(node, 'translateY(' + meta.y + 'px)');
     }
   }, {
@@ -467,6 +496,24 @@ var ListView = function (_HTMLElement) {
       } else {
         meta.y = 0;
       }
+    }
+  }, {
+    key: '_getTemplate',
+    value: function _getTemplate(styles) {
+      return '<div id="scrollingElement" style="' + styles.yScrollable + '">\n      <div id="parentContainer" style="' + styles.parentContainer + '">\n        <slot></slot>\n      </div>\n    </div>';
+    }
+  }, {
+    key: '_setProps',
+    value: function _setProps(props) {
+      var _this2 = this;
+
+      props.forEach(function (prop) {
+        if (_this2.hasOwnProperty(prop)) {
+          var propVal = _this2[prop];
+          delete _this2[prop];
+          _this2[prop] = propVal;
+        }
+      });
     }
   }, {
     key: 'poolIdForRow',
