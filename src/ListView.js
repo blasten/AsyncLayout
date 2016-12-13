@@ -10,22 +10,16 @@ export default class ListView extends HTMLElement {
 
     this.attachShadow({mode: 'open'})
       .innerHTML = `
-      <style>
-        :host {
-          display: block;
-        }
-        ${styles.classes}
-      </style>
-      <div id="scrollingElement">
-        <div id="parentElement">
+      <div id="scrollingElement" style="${styles.yScrollable}">
+        <div id="parentContainer" style="${styles.parentContainer}">
           <slot></slot>
         </div>
       </div>`;
 
     this._$scrollingElement = this.shadowRoot.getElementById('scrollingElement');
-    this._$parentElement = this.shadowRoot.getElementById('contentElement');
+    this._$parentContainer = this.shadowRoot.getElementById('parentContainer');
     r.pool = new DomPool();
-    r.parentElement = this._$parentElement;
+    r.parentElement = this._$parentContainer;
     r.initMetaForIndex = this._initMetaForIndex;
     r.shouldRecycle = this._shouldRecycle;
     r.layout = this._layout;
@@ -88,6 +82,12 @@ export default class ListView extends HTMLElement {
   }
 
   _layout(node, meta) {
+    // Set initial styles.
+    if (node.style.position != 'absolute') {
+      node.style.position = 'absolute';
+      node.style.top = '0px';
+      node.style.willChange = 'transform';
+    }
     transform(node, `translateY(${meta.y}px)`);
   }
 

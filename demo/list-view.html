@@ -7,6 +7,17 @@
   
   <list-view></list-view>
 
+  <script>
+    (function(listView) {
+
+      listView.numberOfRows = 100;
+      listView.domForRow = (idx, container) => {
+        container.innerText = `Index: ${idx}`;
+      };
+
+    })(document.querySelector('list-view'));
+  </script>
+
   <script src="../ListView.es6.js" async></script>
 </body>
 </html>
