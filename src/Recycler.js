@@ -13,7 +13,7 @@ export default class Recycler {
   async mount() {
     await forBeforePaint();
     this._isMounted = true;
-    this.putNodesInPool(this.parentElement.children);
+    this.putNodesInPool(this.parentContainer.children);
     await this.recycle();
   }
 
@@ -131,17 +131,17 @@ export default class Recycler {
     return 0;
   }
 
-  get parentElement() {
+  get parentContainer() {
     return null;
   }
 
   _pushToClient(node, from) {
     const nodes = this._nodes;
-    const parentElement = this.parentElement;
+    const parentContainer = this.parentContainer;
     from == Recycler.START ? nodes.unshift(node) : nodes.push(node);
 
-    if (parentElement && node.parentElement !== parentElement) {
-      parentElement.appendChild(node);
+    if (parentContainer && node.parentContainer !== parentContainer) {
+      parentContainer.appendChild(node);
     }
   }
 

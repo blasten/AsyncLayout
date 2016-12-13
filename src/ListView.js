@@ -19,7 +19,7 @@ export default class ListView extends HTMLElement {
     this._$scrollingElement = this.shadowRoot.getElementById('scrollingElement');
     this._$parentContainer = this.shadowRoot.getElementById('parentContainer');
     r.pool = new DomPool();
-    r.parentElement = this._$parentContainer;
+    r.parentContainer = this._$parentContainer;
     r.initMetaForIndex = this._initMetaForIndex;
     r.shouldRecycle = this._shouldRecycle;
     r.layout = this._layout;
