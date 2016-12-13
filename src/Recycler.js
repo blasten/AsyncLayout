@@ -32,14 +32,12 @@ export default class Recycler {
     if (this._jobId != jobId) {
       return;
     }
-    while (!this.isClientFull(this._nodes, this._metas, from)) {
-      this._populateClient(from, nextIncrement);
-      nextIncrement = nextIncrement * 2;
+    while (nextIncrement > 0 && !this.isClientFull(this._nodes, this._metas, from)) {
+      nextIncrement = this._populateClient(from, nextIncrement) * 2;
     }
-    if (!this.hasEnoughContent(this._nodes, this._metas, from)) {
+    if (nextIncrement > 0 && !this.hasEnoughContent(this._nodes, this._metas, from)) {
       let idle = await forIdleTime();
-      this._populateClient(from, nextIncrement);
-      await this._recycle(from, nextIncrement * 2, jobId);
+      await this._recycle(from, this._populateClient(from, nextIncrement) * 2, jobId);
     }
   }
 
@@ -50,16 +48,15 @@ export default class Recycler {
   }
 
   _shouldRecycle(node) {
-    return this.shouldRecycle(node, meta.get(node));
+    return this.shouldRecycle(node, this.meta.get(node));
   }
 
   _populateClient(from, nextIncrement) {
     const nodes = this._nodes;
     const meta = this.meta;
-
     for (
       let i = 0;
-      from == Recycler.END && i < nodes.length-1 && this._shouldRecycle(nodes[i]);
+      from == Recycler.END && i < nodes.length - 1 && this._shouldRecycle(nodes[i]);
       i++
     ) {
       this._putInPool(nodes[i]);
@@ -74,76 +71,46 @@ export default class Recycler {
       this._removeFromActive(nodes[i], i);
     }
 
-    let poolSize = nextIncrement;
+    let poolIncrease = 0;
     let node;
-
     while (
-      poolSize > 0 &&
+      poolIncrease <= nextIncrement &&
       (node = this._popNodeFromPool(from) || this._allocateNode(from))
     ) {
       this._pushToClient(node, from);
-      poolSize--;
+      poolIncrease++;
     }
     // read
     for (
-      let i = 0;
-      from == Recycler.START && i < nextIncrement;
-      i++
-    ) {
-      this.makeActive(nodes[i], meta.get(nodes[i]), i, from, nodes, meta);
-    }
-    for (
-      let i = nodes.length - 1;
-      from == Recycler.END && i >= nodes.length - nextIncrement;
+      let i = poolIncrease - 1;
+      from == Recycler.START && i >= 0;
       i--
     ) {
       this.makeActive(nodes[i], meta.get(nodes[i]), i, from, nodes,meta);
     }
-    // write
     for (
-      let i = 0;
-      from == Recycler.START && i < nextIncrement;
+      let i = nodes.length - poolIncrease;
+      from == Recycler.END && i < nodes.length;
       i++
     ) {
-      this.layout(nodes[i], meta.get(nodes[i]), i, from);
+      this.makeActive(nodes[i], meta.get(nodes[i]), i, from, nodes, meta);
     }
+    // write
     for (
-      let i = nodes.length - 1;
-      from == Recycler.END && i >= nodes.length - nextIncrement;
+      let i = poolIncrease - 1;
+      from == Recycler.START && i >= 0;
       i--
     ) {
       this.layout(nodes[i], meta.get(nodes[i]), i, from);
     }
-  }
-
-  shouldRecycle(node) {
-    return false;
-  }
-
-  layout(node, idx, meta, from) {
-  }
-
-  makeActive(node, idx, meta, from) {
-  }
-
-  initMetaForIndex(idx) {
-    return null;
-  }
-
-  isClientFull(nodes, metas, from) {
-    return true;
-  }
-
-  hasEnoughContent(nodes, metas, from) {
-    return true;
-  }
-
-  set size(size) {
-    this._size = size;
-  }
-
-  get size() {
-    return this._size;
+    for (
+      let i = nodes.length - poolIncrease;
+      from == Recycler.END && i < nodes.length;
+      i++
+    ) {
+      this.layout(nodes[i], meta.get(nodes[i]), i, from);
+    }
+    return poolIncrease;
   }
 
   _pushToClient(node, from) {
@@ -187,17 +154,17 @@ export default class Recycler {
   _allocateNode(from) {
     let idx;
     const nodes = this._nodes;
-    if (from == Recycler.START) {
-      idx = this.meta.get(nodes[0]).idx;
-      if (idx <= 0) {
-        return null;
-      }
+    if (nodes.length == 0) {
+      idx = 0;
+    }
+    else if (from == Recycler.START) {
+      idx = this.meta.get(nodes[0]).idx-1;
     }
     else {
-      idx = this.meta.get(nodes[nodes.length-1]).idx;
-      if (idx >= this.size-1) {
-        return null;
-      }
+      idx = this.meta.get(nodes[nodes.length-1]).idx+1;
+    }
+    if (idx < 0 || idx >= this.size) {
+      return null;
     }
     const node = document.createElement('div');
     this.nodeForIndex(idx, node);
@@ -208,6 +175,40 @@ export default class Recycler {
   _removeFromActive(node, index) {
     this.meta.delete(node);
     this._nodes.splice(index, 1);
+  }
+
+  shouldRecycle(node) {
+    return false;
+  }
+
+  layout(node, idx, meta, from) {
+  }
+
+  makeActive(node, idx, meta, from) {
+  }
+
+  initMetaForIndex(idx) {
+    return null;
+  }
+
+  isClientFull(nodes, metas, from) {
+    return true;
+  }
+
+  hasEnoughContent(nodes, metas, from) {
+    return true;
+  }
+
+  poolIdForIndex(idx) {
+    return 0;
+  }
+
+  set size(size) {
+    this._size = size;
+  }
+
+  get size() {
+    return this._size;
   }
 
   set pool(pool) {

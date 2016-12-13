@@ -209,18 +209,15 @@ var Recycler = function () {
 
       return Promise.resolve().then(function () {
         if (!(_this6._jobId != jobId)) {
-          while (!_this6.isClientFull(_this6._nodes, _this6._metas, from)) {
-            _this6._populateClient(from, nextIncrement);
-            nextIncrement = nextIncrement * 2;
+          while (nextIncrement > 0 && !_this6.isClientFull(_this6._nodes, _this6._metas, from)) {
+            nextIncrement = _this6._populateClient(from, nextIncrement) * 2;
           }
-          if (!_this6.hasEnoughContent(_this6._nodes, _this6._metas, from)) {
+          if (nextIncrement > 0 && !_this6.hasEnoughContent(_this6._nodes, _this6._metas, from)) {
             return Promise.resolve().then(function () {
               return forIdleTime();
             }).then(function (_resp) {
               idle = _resp;
-
-              _this6._populateClient(from, nextIncrement);
-              return _this6._recycle(from, nextIncrement * 2, jobId);
+              return _this6._recycle(from, _this6._populateClient(from, nextIncrement) * 2, jobId);
             });
           }
         }
@@ -238,14 +235,13 @@ var Recycler = function () {
   }, {
     key: '_shouldRecycle',
     value: function _shouldRecycle(node) {
-      return this.shouldRecycle(node, meta.get(node));
+      return this.shouldRecycle(node, this.meta.get(node));
     }
   }, {
     key: '_populateClient',
     value: function _populateClient(from, nextIncrement) {
       var nodes = this._nodes;
       var meta = this.meta;
-
       for (var i = 0; from == Recycler.END && i < nodes.length - 1 && this._shouldRecycle(nodes[i]); i++) {
         this._putInPool(nodes[i]);
         this._removeFromActive(nodes[i], i);
@@ -255,53 +251,27 @@ var Recycler = function () {
         this._removeFromActive(nodes[_i], _i);
       }
 
-      var poolSize = nextIncrement;
+      var poolIncrease = 0;
       var node = void 0;
-
-      while (poolSize > 0 && (node = this._popNodeFromPool(from) || this._allocateNode(from))) {
+      while (poolIncrease <= nextIncrement && (node = this._popNodeFromPool(from) || this._allocateNode(from))) {
         this._pushToClient(node, from);
-        poolSize--;
+        poolIncrease++;
       }
       // read
-      for (var _i2 = 0; from == Recycler.START && _i2 < nextIncrement; _i2++) {
+      for (var _i2 = poolIncrease - 1; from == Recycler.START && _i2 >= 0; _i2--) {
         this.makeActive(nodes[_i2], meta.get(nodes[_i2]), _i2, from, nodes, meta);
       }
-      for (var _i3 = nodes.length - 1; from == Recycler.END && _i3 >= nodes.length - nextIncrement; _i3--) {
+      for (var _i3 = nodes.length - poolIncrease; from == Recycler.END && _i3 < nodes.length; _i3++) {
         this.makeActive(nodes[_i3], meta.get(nodes[_i3]), _i3, from, nodes, meta);
       }
       // write
-      for (var _i4 = 0; from == Recycler.START && _i4 < nextIncrement; _i4++) {
+      for (var _i4 = poolIncrease - 1; from == Recycler.START && _i4 >= 0; _i4--) {
         this.layout(nodes[_i4], meta.get(nodes[_i4]), _i4, from);
       }
-      for (var _i5 = nodes.length - 1; from == Recycler.END && _i5 >= nodes.length - nextIncrement; _i5--) {
+      for (var _i5 = nodes.length - poolIncrease; from == Recycler.END && _i5 < nodes.length; _i5++) {
         this.layout(nodes[_i5], meta.get(nodes[_i5]), _i5, from);
       }
-    }
-  }, {
-    key: 'shouldRecycle',
-    value: function shouldRecycle(node) {
-      return false;
-    }
-  }, {
-    key: 'layout',
-    value: function layout(node, idx, meta, from) {}
-  }, {
-    key: 'makeActive',
-    value: function makeActive(node, idx, meta, from) {}
-  }, {
-    key: 'initMetaForIndex',
-    value: function initMetaForIndex(idx) {
-      return null;
-    }
-  }, {
-    key: 'isClientFull',
-    value: function isClientFull(nodes, metas, from) {
-      return true;
-    }
-  }, {
-    key: 'hasEnoughContent',
-    value: function hasEnoughContent(nodes, metas, from) {
-      return true;
+      return poolIncrease;
     }
   }, {
     key: '_pushToClient',
@@ -348,16 +318,15 @@ var Recycler = function () {
     value: function _allocateNode(from) {
       var idx = void 0;
       var nodes = this._nodes;
-      if (from == Recycler.START) {
-        idx = this.meta.get(nodes[0]).idx;
-        if (idx <= 0) {
-          return null;
-        }
+      if (nodes.length == 0) {
+        idx = 0;
+      } else if (from == Recycler.START) {
+        idx = this.meta.get(nodes[0]).idx - 1;
       } else {
-        idx = this.meta.get(nodes[nodes.length - 1]).idx;
-        if (idx >= this.size - 1) {
-          return null;
-        }
+        idx = this.meta.get(nodes[nodes.length - 1]).idx + 1;
+      }
+      if (idx < 0 || idx >= this.size) {
+        return null;
       }
       var node = document.createElement('div');
       this.nodeForIndex(idx, node);
@@ -369,6 +338,37 @@ var Recycler = function () {
     value: function _removeFromActive(node, index) {
       this.meta.delete(node);
       this._nodes.splice(index, 1);
+    }
+  }, {
+    key: 'shouldRecycle',
+    value: function shouldRecycle(node) {
+      return false;
+    }
+  }, {
+    key: 'layout',
+    value: function layout(node, idx, meta, from) {}
+  }, {
+    key: 'makeActive',
+    value: function makeActive(node, idx, meta, from) {}
+  }, {
+    key: 'initMetaForIndex',
+    value: function initMetaForIndex(idx) {
+      return null;
+    }
+  }, {
+    key: 'isClientFull',
+    value: function isClientFull(nodes, metas, from) {
+      return true;
+    }
+  }, {
+    key: 'hasEnoughContent',
+    value: function hasEnoughContent(nodes, metas, from) {
+      return true;
+    }
+  }, {
+    key: 'poolIdForIndex',
+    value: function poolIdForIndex(idx) {
+      return 0;
     }
   }, {
     key: 'size',
@@ -430,17 +430,19 @@ var ListView = function (_HTMLElement) {
 
     _this.attachShadow({ mode: 'open' }).innerHTML = _this._getTemplate(listViewStyles());
     _this._$scrollingElement = _this.shadowRoot.getElementById('scrollingElement');
-    _this._$parentContainer = _this.shadowRoot.getElementById('parentContainer');
     _this._props = {};
     var recycler = new Recycler();
     recycler.pool = new DomPool();
-    recycler.parentContainer = _this._$parentContainer;
+    recycler.parentContainer = _this;
     recycler.initMetaForIndex = _this._initMetaForIndex;
     recycler.shouldRecycle = _this._shouldRecycle;
+    recycler.isClientFull = _this._isClientFull;
+    recycler.hasEnoughContent = _this._hasEnoughContent;
+    recycler.poolIdForIndex = _this._poolIdForIndex;
     recycler.layout = _this._layout;
-    recycler.makeActive = _this._makeActive;
+    recycler.makeActive = _this._makeActive.bind(_this);
     _this._recycler = recycler;
-    _this._setProps(['numberOfRows', 'domForRow']);
+    _this._setProps(['numberOfRows', 'domForRow', 'heightForRow', 'scrollingElement']);
     return _this;
   }
 
@@ -455,10 +457,25 @@ var ListView = function (_HTMLElement) {
       this._recycler.unmount();
     }
   }, {
+    key: '_isClientFull',
+    value: function _isClientFull(nodes, metas, from) {
+      return from === Recycler.END ? nodes.length > 100 : true;
+    }
+  }, {
+    key: '_hasEnoughContent',
+    value: function _hasEnoughContent(nodes, metas, from) {
+      return true;
+    }
+  }, {
+    key: '_poolIdForIndex',
+    value: function _poolIdForIndex(idx) {
+      return 0;
+    }
+  }, {
     key: '_initMetaForIndex',
     value: function _initMetaForIndex(idx) {
       return {
-        idx: 0,
+        idx: idx,
         h: 0,
         y: 0
       };
@@ -466,10 +483,12 @@ var ListView = function (_HTMLElement) {
   }, {
     key: '_shouldRecycle',
     value: function _shouldRecycle(node, meta) {
-      var se = this.scrollingElement();
-      var clientHeight = this.clientHeight();
+      return false;
+      // const se = this.scrollingElement();
+      // const clientHeight = this.clientHeight();
 
-      return meta.y + meta.h < se.scrollTop - clientHeight || meta.y + meta.h > se.scrollTop + clientHeight * 2;
+      // return meta.y + meta.h < se.scrollTop - clientHeight ||
+      //   meta.y + meta.h > se.scrollTop + clientHeight * 2;
     }
   }, {
     key: '_layout',
@@ -480,12 +499,12 @@ var ListView = function (_HTMLElement) {
         node.style.top = '0px';
         node.style.willChange = 'transform';
       }
-      transform(node, 'translateY(' + meta.y + 'px)');
+      node.style.transform = 'translateY(' + meta.y + 'px)';
     }
   }, {
     key: '_makeActive',
     value: function _makeActive(node, meta, idx, from, nodes, metas) {
-      meta.h = node.offsetHeight;
+      meta.h = this._props.heightForRow ? this._props.heightForRow(meta.idx, node) : node.offsetHeight;
 
       if (from == Recycler.START && idx + 1 < nodes.length) {
         var nextM = metas.get(nodes[idx + 1]);
@@ -518,7 +537,7 @@ var ListView = function (_HTMLElement) {
   }, {
     key: 'poolIdForRow',
     set: function set(fn) {
-      this._props['poolIdForRow'] = fn;
+      this._props.poolIdForRow = fn;
       this._recycler.poolIdForIndex = function (idx) {
         fn(idx);
       };
@@ -526,18 +545,18 @@ var ListView = function (_HTMLElement) {
   }, {
     key: 'poolIdForIndex',
     get: function get() {
-      return this._props['poolIdForRow'];
+      return this._props.poolIdForRow;
     }
   }, {
     key: 'domForRow',
     set: function set(fn) {
-      this._props['domForRow'] = fn;
+      this._props.domForRow = fn;
       this._recycler.nodeForIndex = function (idx, container) {
         fn(idx, container);
       };
     },
     get: function get() {
-      return this._props['domForRow'];
+      return this._props.domForRow;
     }
   }, {
     key: 'numberOfRows',
@@ -546,6 +565,23 @@ var ListView = function (_HTMLElement) {
     },
     get: function get() {
       return this._recycler.size;
+    }
+  }, {
+    key: 'heightForRow',
+    get: function get() {
+      return this._props.heightForRow;
+    },
+    set: function set(fn) {
+      this._props.heightForRow = fn;
+    }
+  }, {
+    key: 'scrollingElement',
+    get: function get() {
+      return this._props.scrollingElement;
+    },
+    set: function set(se) {
+      this._props.scrollingElement = se;
+      this._$scrollingElement.style.cssText = se === this ? listViewStyles().yScrollable : '';
     }
   }]);
   return ListView;

@@ -80,17 +80,15 @@ class Recycler {
 
     return Promise.resolve().then(function () {
       if (!(_this5._jobId != jobId)) {
-        while (!_this5.isClientFull(_this5._nodes, _this5._metas, from)) {
-          _this5._populateClient(from, nextIncrement);
-          nextIncrement = nextIncrement * 2;
+        while (nextIncrement > 0 && !_this5.isClientFull(_this5._nodes, _this5._metas, from)) {
+          nextIncrement = _this5._populateClient(from, nextIncrement) * 2;
         }
-        if (!_this5.hasEnoughContent(_this5._nodes, _this5._metas, from)) {
+        if (nextIncrement > 0 && !_this5.hasEnoughContent(_this5._nodes, _this5._metas, from)) {
           return Promise.resolve().then(function () {
             return forIdleTime();
           }).then(function (_resp) {
             let idle = _resp;
-            _this5._populateClient(from, nextIncrement);
-            return _this5._recycle(from, nextIncrement * 2, jobId);
+            return _this5._recycle(from, _this5._populateClient(from, nextIncrement) * 2, jobId);
           });
         }
       }
@@ -104,13 +102,12 @@ class Recycler {
   }
 
   _shouldRecycle(node) {
-    return this.shouldRecycle(node, meta.get(node));
+    return this.shouldRecycle(node, this.meta.get(node));
   }
 
   _populateClient(from, nextIncrement) {
     const nodes = this._nodes;
     const meta = this.meta;
-
     for (let i = 0; from == Recycler.END && i < nodes.length - 1 && this._shouldRecycle(nodes[i]); i++) {
       this._putInPool(nodes[i]);
       this._removeFromActive(nodes[i], i);
@@ -120,55 +117,27 @@ class Recycler {
       this._removeFromActive(nodes[i], i);
     }
 
-    let poolSize = nextIncrement;
+    let poolIncrease = 0;
     let node;
-
-    while (poolSize > 0 && (node = this._popNodeFromPool(from) || this._allocateNode(from))) {
+    while (poolIncrease <= nextIncrement && (node = this._popNodeFromPool(from) || this._allocateNode(from))) {
       this._pushToClient(node, from);
-      poolSize--;
+      poolIncrease++;
     }
     // read
-    for (let i = 0; from == Recycler.START && i < nextIncrement; i++) {
+    for (let i = poolIncrease - 1; from == Recycler.START && i >= 0; i--) {
       this.makeActive(nodes[i], meta.get(nodes[i]), i, from, nodes, meta);
     }
-    for (let i = nodes.length - 1; from == Recycler.END && i >= nodes.length - nextIncrement; i--) {
+    for (let i = nodes.length - poolIncrease; from == Recycler.END && i < nodes.length; i++) {
       this.makeActive(nodes[i], meta.get(nodes[i]), i, from, nodes, meta);
     }
     // write
-    for (let i = 0; from == Recycler.START && i < nextIncrement; i++) {
+    for (let i = poolIncrease - 1; from == Recycler.START && i >= 0; i--) {
       this.layout(nodes[i], meta.get(nodes[i]), i, from);
     }
-    for (let i = nodes.length - 1; from == Recycler.END && i >= nodes.length - nextIncrement; i--) {
+    for (let i = nodes.length - poolIncrease; from == Recycler.END && i < nodes.length; i++) {
       this.layout(nodes[i], meta.get(nodes[i]), i, from);
     }
-  }
-
-  shouldRecycle(node) {
-    return false;
-  }
-
-  layout(node, idx, meta, from) {}
-
-  makeActive(node, idx, meta, from) {}
-
-  initMetaForIndex(idx) {
-    return null;
-  }
-
-  isClientFull(nodes, metas, from) {
-    return true;
-  }
-
-  hasEnoughContent(nodes, metas, from) {
-    return true;
-  }
-
-  set size(size) {
-    this._size = size;
-  }
-
-  get size() {
-    return this._size;
+    return poolIncrease;
   }
 
   _pushToClient(node, from) {
@@ -210,16 +179,15 @@ class Recycler {
   _allocateNode(from) {
     let idx;
     const nodes = this._nodes;
-    if (from == Recycler.START) {
-      idx = this.meta.get(nodes[0]).idx;
-      if (idx <= 0) {
-        return null;
-      }
+    if (nodes.length == 0) {
+      idx = 0;
+    } else if (from == Recycler.START) {
+      idx = this.meta.get(nodes[0]).idx - 1;
     } else {
-      idx = this.meta.get(nodes[nodes.length - 1]).idx;
-      if (idx >= this.size - 1) {
-        return null;
-      }
+      idx = this.meta.get(nodes[nodes.length - 1]).idx + 1;
+    }
+    if (idx < 0 || idx >= this.size) {
+      return null;
     }
     const node = document.createElement('div');
     this.nodeForIndex(idx, node);
@@ -230,6 +198,38 @@ class Recycler {
   _removeFromActive(node, index) {
     this.meta.delete(node);
     this._nodes.splice(index, 1);
+  }
+
+  shouldRecycle(node) {
+    return false;
+  }
+
+  layout(node, idx, meta, from) {}
+
+  makeActive(node, idx, meta, from) {}
+
+  initMetaForIndex(idx) {
+    return null;
+  }
+
+  isClientFull(nodes, metas, from) {
+    return true;
+  }
+
+  hasEnoughContent(nodes, metas, from) {
+    return true;
+  }
+
+  poolIdForIndex(idx) {
+    return 0;
+  }
+
+  set size(size) {
+    this._size = size;
+  }
+
+  get size() {
+    return this._size;
   }
 
   set pool(pool) {
@@ -283,17 +283,19 @@ class ListView extends HTMLElement {
     super();
     this.attachShadow({ mode: 'open' }).innerHTML = this._getTemplate(listViewStyles());
     this._$scrollingElement = this.shadowRoot.getElementById('scrollingElement');
-    this._$parentContainer = this.shadowRoot.getElementById('parentContainer');
     this._props = {};
     const recycler = new Recycler();
     recycler.pool = new DomPool();
-    recycler.parentContainer = this._$parentContainer;
+    recycler.parentContainer = this;
     recycler.initMetaForIndex = this._initMetaForIndex;
     recycler.shouldRecycle = this._shouldRecycle;
+    recycler.isClientFull = this._isClientFull;
+    recycler.hasEnoughContent = this._hasEnoughContent;
+    recycler.poolIdForIndex = this._poolIdForIndex;
     recycler.layout = this._layout;
-    recycler.makeActive = this._makeActive;
+    recycler.makeActive = this._makeActive.bind(this);
     this._recycler = recycler;
-    this._setProps(['numberOfRows', 'domForRow']);
+    this._setProps(['numberOfRows', 'domForRow', 'heightForRow', 'scrollingElement']);
   }
 
   connectedCallback() {
@@ -305,25 +307,25 @@ class ListView extends HTMLElement {
   }
 
   set poolIdForRow(fn) {
-    this._props['poolIdForRow'] = fn;
+    this._props.poolIdForRow = fn;
     this._recycler.poolIdForIndex = idx => {
       fn(idx);
     };
   }
 
   get poolIdForIndex() {
-    return this._props['poolIdForRow'];
+    return this._props.poolIdForRow;
   }
 
   set domForRow(fn) {
-    this._props['domForRow'] = fn;
+    this._props.domForRow = fn;
     this._recycler.nodeForIndex = (idx, container) => {
       fn(idx, container);
     };
   }
 
   get domForRow() {
-    return this._props['domForRow'];
+    return this._props.domForRow;
   }
 
   set numberOfRows(size) {
@@ -334,19 +336,50 @@ class ListView extends HTMLElement {
     return this._recycler.size;
   }
 
+  get heightForRow() {
+    return this._props.heightForRow;
+  }
+
+  set heightForRow(fn) {
+    this._props.heightForRow = fn;
+  }
+
+  get scrollingElement() {
+    return this._props.scrollingElement;
+  }
+
+  set scrollingElement(se) {
+    this._props.scrollingElement = se;
+    this._$scrollingElement.style.cssText = se === this ? listViewStyles().yScrollable : '';
+  }
+
+  _isClientFull(nodes, metas, from) {
+    return from === Recycler.END ? nodes.length > 100 : true;
+  }
+
+  _hasEnoughContent(nodes, metas, from) {
+    return true;
+  }
+
+  _poolIdForIndex(idx) {
+    return 0;
+  }
+
   _initMetaForIndex(idx) {
     return {
-      idx: 0,
+      idx: idx,
       h: 0,
       y: 0
     };
   }
 
   _shouldRecycle(node, meta) {
-    const se = this.scrollingElement();
-    const clientHeight = this.clientHeight();
+    return false;
+    // const se = this.scrollingElement();
+    // const clientHeight = this.clientHeight();
 
-    return meta.y + meta.h < se.scrollTop - clientHeight || meta.y + meta.h > se.scrollTop + clientHeight * 2;
+    // return meta.y + meta.h < se.scrollTop - clientHeight ||
+    //   meta.y + meta.h > se.scrollTop + clientHeight * 2;
   }
 
   _layout(node, meta) {
@@ -356,11 +389,11 @@ class ListView extends HTMLElement {
       node.style.top = '0px';
       node.style.willChange = 'transform';
     }
-    transform(node, `translateY(${ meta.y }px)`);
+    node.style.transform = `translateY(${ meta.y }px)`;
   }
 
   _makeActive(node, meta, idx, from, nodes, metas) {
-    meta.h = node.offsetHeight;
+    meta.h = this._props.heightForRow ? this._props.heightForRow(meta.idx, node) : node.offsetHeight;
 
     if (from == Recycler.START && idx + 1 < nodes.length) {
       let nextM = metas.get(nodes[idx + 1]);

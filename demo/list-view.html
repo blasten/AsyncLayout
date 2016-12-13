@@ -10,7 +10,12 @@
   <script>
     (function(listView) {
 
+      listView.scrollingElement = document.scrollingElement;
+
       listView.numberOfRows = 100;
+      listView.heightForRow = (idx, container) => {
+        return 53;
+      };
       listView.domForRow = (idx, container) => {
         container.innerText = `Index: ${idx}`;
       };
