@@ -1,5 +1,7 @@
 import DomPool from './DomPool';
 import {forIdleTime, forBeforePaint} from './Async';
+import {clamp} from './utils';
+
 
 export default class Recycler {
   constructor() {
@@ -10,6 +12,10 @@ export default class Recycler {
     this._nodes = [];
     this._isMounted  = false;
     this.meta = new WeakMap();
+  }
+
+  get mounted() {
+    return this._isMounted;
   }
 
   async mount() {
@@ -32,19 +38,33 @@ export default class Recycler {
     if (this._jobId != jobId) {
       return;
     }
-    while (nextIncrement > 0 && !this.isClientFull(this._nodes, this._metas, from)) {
-      nextIncrement = this._populateClient(from, nextIncrement) * 2;
+    // Schedule onscreen work.
+    while (!this.isClientFull(this._nodes, this.meta, from)) {
+      let now = performance.now();
+      nextIncrement = this._populateClient(from, nextIncrement);
+      if (nextIncrement === 0) {
+        break;
+      }
+      this._unitCost = (performance.now() - now) / nextIncrement;
+      nextIncrement = nextIncrement * 2;
     }
-    if (nextIncrement > 0 && !this.hasEnoughContent(this._nodes, this._metas, from)) {
+    // Schedule offscreen work.
+    if (nextIncrement > 0 && !this.hasEnoughContent(this._nodes, this.meta, from)) {
       let idle = await forIdleTime();
+      nextIncrement = clamp(~~(idle.timeRemaining() / this._unitCost), 1, nextIncrement);
       await this._recycle(from, this._populateClient(from, nextIncrement) * 2, jobId);
     }
   }
 
   _putNodesInPool(nodes) {
-    Array.from(nodes).forEach(node => {
-      this.pool.push(node.dataset.poolId || 0, node);
-    });
+    Array.from(nodes).forEach(node => this._putInPool(node));
+  }
+
+  _putInPool(node) {
+    if (!node.dataset.poolId) {
+      node.dataset.poolId = 0;
+    }
+    this.pool.push(node.dataset.poolId, node);
   }
 
   _shouldRecycle(node) {
@@ -54,21 +74,21 @@ export default class Recycler {
   _populateClient(from, nextIncrement) {
     const nodes = this._nodes;
     const meta = this.meta;
-    for (
-      let i = 0;
-      from == Recycler.END && i < nodes.length - 1 && this._shouldRecycle(nodes[i]);
-      i++
+    while (
+      from == Recycler.END &&
+      nodes.length > 0 &&
+      this._shouldRecycle(nodes[0])
     ) {
-      this._putInPool(nodes[i]);
-      this._removeFromActive(nodes[i], i);
+      this._putInPool(nodes[0]);
+      this._removeFromActive(nodes[0], 0);
     }
-    for (
-      let i = nodes.length - 1;
-      from == Recycler.START && i > 0 && this._shouldRecycle(nodes[i]);
-      i--
+    while (
+      from == Recycler.START &&
+      nodes.length > 0 &&
+      this._shouldRecycle(nodes[nodes.length - 1])
     ) {
-      this._putInPool(nodes[i]);
-      this._removeFromActive(nodes[i], i);
+      this._putInPool(nodes[nodes.length - 1]);
+      this._removeFromActive(nodes[nodes.length - 1], nodes.length - 1);
     }
 
     let poolIncrease = 0;
@@ -123,16 +143,12 @@ export default class Recycler {
     }
   }
 
-  _putInPool(node) {
-    let meta = this.meta.get(node);
-    this.pool.push(meta.poolId, node);
-  }
-
   _popNodeFromPool(from) {
     let idx, poolId;
     const nodes = this._nodes;
 
     if (nodes.length === 0) {
+      idx = 0;
       poolId = this.poolIdForIndex(0);
     }
     else if (from == Recycler.START) {
@@ -158,15 +174,16 @@ export default class Recycler {
       idx = 0;
     }
     else if (from == Recycler.START) {
-      idx = this.meta.get(nodes[0]).idx-1;
+      idx = this.meta.get(nodes[0]).idx - 1;
     }
     else {
-      idx = this.meta.get(nodes[nodes.length-1]).idx+1;
+      idx = this.meta.get(nodes[nodes.length - 1]).idx + 1;
     }
     if (idx < 0 || idx >= this.size) {
       return null;
     }
     const node = document.createElement('div');
+    node.dataset.poolId = this.poolIdForIndex(idx); 
     this.nodeForIndex(idx, node);
     this.meta.set(node, this.initMetaForIndex(idx, node));
     return node;

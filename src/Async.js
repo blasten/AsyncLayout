@@ -1,7 +1,12 @@
 export function forIdleTime() {
   return new Promise(function(resolve) {
-    let w = window;
-    w.requestIdleCallback ? w.requestIdleCallback(resolve) : w.setTimeout(resolve, 16);
+    const w = window;
+    w.requestIdleCallback ? w.requestIdleCallback(resolve) :
+        w.setTimeout(resolve.bind(null, {
+          timeRemaining() {
+            return 50;
+          }
+        }), 16);
   });
 };
 

@@ -7,14 +7,19 @@ export default class ListView extends HTMLElement {
     super();
     this.attachShadow({mode: 'open'}).innerHTML = this._getTemplate(listViewStyles());
     this._$scrollingElement = this.shadowRoot.getElementById('scrollingElement');
+    this._$parentContainer = this.shadowRoot.getElementById('parentContainer');
     this._props = {};
+    this._sumHeights = 0;
+    this._sumNodes = 0;
+    // Create recyler context.
     const recycler = new Recycler();
+    // Set the DOM pool for the context.
     recycler.pool = new DomPool();
     recycler.parentContainer = this;
     recycler.initMetaForIndex = this._initMetaForIndex;
-    recycler.shouldRecycle = this._shouldRecycle;
-    recycler.isClientFull = this._isClientFull;
-    recycler.hasEnoughContent = this._hasEnoughContent;
+    recycler.shouldRecycle = this._shouldRecycle.bind(this);
+    recycler.isClientFull = this._isClientFull.bind(this);
+    recycler.hasEnoughContent = this._hasEnoughContent.bind(this);
     recycler.poolIdForIndex = this._poolIdForIndex;
     recycler.layout = this._layout;
     recycler.makeActive = this._makeActive.bind(this);
@@ -23,7 +28,16 @@ export default class ListView extends HTMLElement {
   }
 
   connectedCallback() {
-    this._recycler.mount();
+    this._refresh();
+  }
+
+  async _refresh() {
+    if (!this._recycler.mounted) {
+      await this._recycler.mount();
+    } else {
+      await this._recycler.recycle();
+    }
+    this._$parentContainer.style.height = (this._heightMean * this.numberOfRows)+ 'px';
   }
 
   disconnectedCallback() {
@@ -66,7 +80,7 @@ export default class ListView extends HTMLElement {
   }
 
   get scrollingElement() {
-    return this._props.scrollingElement;
+    return this._props.scrollingElement || this;
   }
 
   set scrollingElement(se) {
@@ -74,12 +88,31 @@ export default class ListView extends HTMLElement {
     this._$scrollingElement.style.cssText = se === this ? listViewStyles().yScrollable : '';
   }
 
+  get _heightMean() {
+    return this._sumNodes === 0 ? 0 : this._sumHeights / this._sumNodes;
+  }
+
+  _canFitExtra(t, nodes, metas, from) {
+    if (nodes.length == 0) {
+      return false;
+    }
+    const se = this.scrollingElement;
+    const win = se.scrollTop + se.clientHeight * t;
+    if (from == Recycler.START && metas.get(nodes[0]).y <= win) {
+      return true;
+    }
+    if (from == Recycler.END && metas.get(nodes[nodes.length - 1]).y >= win + se.clientHeight) {
+      return true;
+    }
+    return false;
+  }
+
   _isClientFull(nodes, metas, from) {
-    return from === Recycler.END ? nodes.length > 100 : true;
+    return this._canFitExtra(0, nodes, metas, from);
   }
 
   _hasEnoughContent(nodes, metas, from) {
-    return true;
+    return this._canFitExtra(0.5, nodes, metas, from);
   }
 
   _poolIdForIndex(idx) {
@@ -95,12 +128,10 @@ export default class ListView extends HTMLElement {
   }
 
   _shouldRecycle(node, meta) {
-    return false;
-    // const se = this.scrollingElement();
-    // const clientHeight = this.clientHeight();
-
-    // return meta.y + meta.h < se.scrollTop - clientHeight ||
-    //   meta.y + meta.h > se.scrollTop + clientHeight * 2;
+    const se = this.scrollingElement;
+    const clientHeight = se.clientHeight;
+    return meta.y + meta.h < se.scrollTop - clientHeight ||
+      meta.y + meta.h > se.scrollTop + clientHeight * 1.5;
   }
 
   _layout(node, meta) {
@@ -116,6 +147,9 @@ export default class ListView extends HTMLElement {
   _makeActive(node, meta, idx, from, nodes, metas) {
     meta.h = this._props.heightForRow ?
         this._props.heightForRow(meta.idx, node) : node.offsetHeight;
+    // Keep track of the heights to estimate the mean.
+    this._sumHeights = this._sumHeights + meta.h;
+    this._sumNodes = this._sumNodes + 1;
 
     if (from == Recycler.START && idx + 1 < nodes.length) {
       let nextM = metas.get(nodes[idx + 1]);

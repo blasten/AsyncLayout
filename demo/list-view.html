@@ -2,10 +2,36 @@
 <html>
 <head>
   <title>ListView</title>
+  <style>
+    .item {
+      height: 50px;
+    }
+  </style>
 </head>
 <body>
   
-  <list-view></list-view>
+  <list-view>
+    <div class="item">Item 0</div>
+    <div class="item">Item 1</div>
+    <div class="item">Item 2</div>
+    <div class="item">Item 3</div>
+    <div class="item">Item 4</div>
+    <div class="item">Item 5</div>
+    <div class="item">Item 6</div>
+    <div class="item">Item 7</div>
+    <div class="item">Item 8</div>
+    <div class="item">Item 9</div>
+    <div class="item">Item 10</div>
+    <div class="item">Item 11</div>
+    <div class="item">Item 12</div>
+    <div class="item">Item 13</div>
+    <div class="item">Item 14</div>
+    <div class="item">Item 15</div>
+    <div class="item">Item 16</div>
+    <div class="item">Item 17</div>
+    <div class="item">Item 18</div>
+    <div class="item">Item 19</div>
+  </list-view>
 
   <script>
     (function(listView) {
@@ -14,10 +40,11 @@
 
       listView.numberOfRows = 100;
       listView.heightForRow = (idx, container) => {
-        return 53;
+        return 50;
       };
       listView.domForRow = (idx, container) => {
-        container.innerText = `Index: ${idx}`;
+        container.classList.add('item');
+        container.innerText = `Item ${idx}`;
       };
 
     })(document.querySelector('list-view'));
