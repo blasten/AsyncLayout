@@ -14,6 +14,13 @@ export default class DomPool {
     if (!this._pools[poolId]) {
       return null;
     }
-    return this._pools[poolId].pop() || null;
+    return this._pools[poolId].pop();
+  }
+
+  shift(poolId) {
+    if (!this._pools[poolId]) {
+      return null;
+    }
+    return this._pools[poolId].shift();
   }
 }

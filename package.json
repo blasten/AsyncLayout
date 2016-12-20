@@ -5,10 +5,10 @@
   "main": "UITableView.js",
   "scripts": {
     "test": "mocha",
-    "serve": "browser-sync start --server --directory --startPath demo/list-view.html ",
-    "build": "npm-run-all transpile:list-view-es6 minify:list-view-es6 transpile:list-view-es5 minify:list-view-es5",
+    "serve": "python server.py",
+    "build": "npm-run-all transpile:list-view-es6",
     "transpile:list-view-es5": "BABEL_ENV=es5 rollup src/ListView.js -f umd -n ListView -c config/rollup.config.es5.js --output ListView.es5.js",
-    "transpile:list-view-es6": "BABEL_ENV=es6 rollup src/ListView.js -f umd -n ListView -c config/rollup.config.es6.js --output ListView.es6.js",
+    "transpile:list-view-es6": "BABEL_ENV=es6 rollup src/components/all.js -f umd -n Layout -c config/rollup.config.es6.js --output dist/Layout.es6.js",
     "minify:list-view-es5": "uglifyjs ListView.es5.js -o ListView.es5.min.js",
     "minify:list-view-es6": "uglifyjs ListView.es6.js -o ListView.es6.min.js"
   },
@@ -26,7 +26,6 @@
     "babel-plugin-async-to-promises": "^1.0.5",
     "babel-plugin-es6-promise": "^1.0.0",
     "babel-preset-es2015-rollup": "^3.0.0",
-    "babelify": "^7.3.0",
     "expect.js": "^0.3.1",
     "mocha": "^2.4.5",
     "npm-run-all": "^3.1.2",

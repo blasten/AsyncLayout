@@ -1,16 +1,19 @@
-import Recycler from './Recycler';
-import DomPool from './DomPool';
-import {listViewStyles} from './list-view-styles';
+import Recycler from '../Recycler';
+import DomPool from '../DomPool';
+import {forBeforePaint} from '../Async';
+import {listViewStyles} from '../list-view-styles';
 
-export default class ListView extends HTMLElement {
+export default class LayoutVertical extends HTMLElement {
   constructor() {
     super();
-    this.attachShadow({mode: 'open'}).innerHTML = this._getTemplate(listViewStyles());
-    this._$scrollingElement = this.shadowRoot.getElementById('scrollingElement');
-    this._$parentContainer = this.shadowRoot.getElementById('parentContainer');
+    const root = this.attachShadow({ mode: 'open' });
+    root.innerHTML = this._getTemplate(listViewStyles());
+    this._$scrollingElement = root.getElementById('scrollingElement');
+    this._$parentContainer = root.getElementById('parentContainer');
     this._props = {};
     this._sumHeights = 0;
     this._sumNodes = 0;
+    this._scrollDidUpdate = this._scrollDidUpdate.bind(this);
     // Create recyler context.
     const recycler = new Recycler();
     // Set the DOM pool for the context.
@@ -20,28 +23,11 @@ export default class ListView extends HTMLElement {
     recycler.shouldRecycle = this._shouldRecycle.bind(this);
     recycler.isClientFull = this._isClientFull.bind(this);
     recycler.hasEnoughContent = this._hasEnoughContent.bind(this);
-    recycler.poolIdForIndex = this._poolIdForIndex;
-    recycler.layout = this._layout;
+    recycler.poolIdForIndex = this._poolIdForIndex.bind(this);
+    recycler.layout = this._layout.bind(this);
     recycler.makeActive = this._makeActive.bind(this);
     this._recycler = recycler;
     this._setProps(['numberOfRows', 'domForRow', 'heightForRow', 'scrollingElement']);
-  }
-
-  connectedCallback() {
-    this._refresh();
-  }
-
-  async _refresh() {
-    if (!this._recycler.mounted) {
-      await this._recycler.mount();
-    } else {
-      await this._recycler.recycle();
-    }
-    this._$parentContainer.style.height = (this._heightMean * this.numberOfRows)+ 'px';
-  }
-
-  disconnectedCallback() {
-    this._recycler.unmount();
   }
 
   set poolIdForRow(fn) {
@@ -84,35 +70,61 @@ export default class ListView extends HTMLElement {
   }
 
   set scrollingElement(se) {
+    if (this._props.scrollingElement) {
+      this._eventTarget(this._props.scrollingElement)
+          .removeEventListener('scroll', this._scrollDidUpdate);
+    }
     this._props.scrollingElement = se;
     this._$scrollingElement.style.cssText = se === this ? listViewStyles().yScrollable : '';
+    window.addEventListener('scroll', this._scrollDidUpdate);
   }
 
-  get _heightMean() {
-    return this._sumNodes === 0 ? 0 : this._sumHeights / this._sumNodes;
+  get _contentHeight() {
+    return this._sumHeights + (this.numberOfRows - this._sumNodes) * (this._sumHeights / this._sumNodes);
   }
 
-  _canFitExtra(t, nodes, metas, from) {
+  _eventTarget(se) {
+    const d = document;
+    return se === d.body || se === d.documentElement || !(se instanceof HTMLElement) ? null : se;
+  }
+
+  async connectedCallback() {
+    this._recycler.mount();
+    await forBeforePaint();
+    this.refresh();
+  }
+
+  disconnectedCallback() {
+    this._recycler.unmount();
+  }
+
+  _scrollDidUpdate() {
+    this.refresh();
+  }
+
+  async refresh() {
+    this._top = this.scrollingElement.scrollTop;
+    this._clientHeight = this.scrollingElement.clientHeight;
+    await this._recycler.recycle();
+    this._$parentContainer.style.height = `${this._contentHeight}px`;
+  }
+
+  _checkThresholds(dist, nodes, metas, from) {
     if (nodes.length == 0) {
       return false;
     }
-    const se = this.scrollingElement;
-    const win = se.scrollTop + se.clientHeight * t;
-    if (from == Recycler.START && metas.get(nodes[0]).y <= win) {
-      return true;
+    if (from == Recycler.START) {
+      return metas.get(this._recycler.startNode).y <= this._top - dist;
     }
-    if (from == Recycler.END && metas.get(nodes[nodes.length - 1]).y >= win + se.clientHeight) {
-      return true;
-    }
-    return false;
+    return metas.get(this._recycler.endNode).y >= this._top + this._clientHeight + dist;
   }
 
   _isClientFull(nodes, metas, from) {
-    return this._canFitExtra(0, nodes, metas, from);
+    return this._checkThresholds(0, nodes, metas, from);
   }
 
   _hasEnoughContent(nodes, metas, from) {
-    return this._canFitExtra(0.5, nodes, metas, from);
+    return this._checkThresholds(this._clientHeight/2, nodes, metas, from);
   }
 
   _poolIdForIndex(idx) {
@@ -128,10 +140,8 @@ export default class ListView extends HTMLElement {
   }
 
   _shouldRecycle(node, meta) {
-    const se = this.scrollingElement;
-    const clientHeight = se.clientHeight;
-    return meta.y + meta.h < se.scrollTop - clientHeight ||
-      meta.y + meta.h > se.scrollTop + clientHeight * 1.5;
+    return meta.y + meta.h < this._top - this._clientHeight/2 ||
+        meta.y > this._top + this._clientHeight*1.5;
   }
 
   _layout(node, meta) {
@@ -141,7 +151,7 @@ export default class ListView extends HTMLElement {
       node.style.top = '0px';
       node.style.willChange = 'transform';
     }
-    node.style.transform = `translateY(${meta.y}px)`;
+    node.style.transform = `matrix(1, 0, 0, 1, 0, ${meta.y})`;
   }
 
   _makeActive(node, meta, idx, from, nodes, metas) {
@@ -165,11 +175,17 @@ export default class ListView extends HTMLElement {
   }
 
   _getTemplate(styles) {
-    return `<div id="scrollingElement" style="${styles.yScrollable}">
-      <div id="parentContainer" style="${styles.parentContainer}">
-        <slot></slot>
-      </div>
-    </div>`;
+    return `
+      <style>
+        :host {
+          display: block;
+        }
+      </style>
+      <div id="scrollingElement" style="${styles.yScrollable}">
+        <div id="parentContainer" style="${styles.parentContainer}">
+          <slot></slot>
+        </div>
+      </div>`;
   }
 
   _setProps(props) {
@@ -183,4 +199,4 @@ export default class ListView extends HTMLElement {
   }
 }
 
-customElements.define('list-view', ListView);
+customElements.define('layout-vertical', LayoutVertical);

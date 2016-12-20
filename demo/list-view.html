@@ -6,11 +6,15 @@
     .item {
       height: 50px;
     }
+
+    list-view {
+      height: 5000px;
+    }
   </style>
 </head>
 <body>
   
-  <list-view>
+  <layout-vertical>
     <div class="item">Item 0</div>
     <div class="item">Item 1</div>
     <div class="item">Item 2</div>
@@ -31,25 +35,29 @@
     <div class="item">Item 17</div>
     <div class="item">Item 18</div>
     <div class="item">Item 19</div>
-  </list-view>
+  </layout-vertical>
 
   <script>
-    (function(listView) {
+    (function(list) {
 
-      listView.scrollingElement = document.scrollingElement;
+      list.scrollingElement = document.scrollingElement;
 
-      listView.numberOfRows = 100;
-      listView.heightForRow = (idx, container) => {
+      list.numberOfRows = 10000;
+      list.heightForRow = (idx, container) => {
         return 50;
       };
-      listView.domForRow = (idx, container) => {
+      list.domForRow = (idx, container) => {
         container.classList.add('item');
         container.innerText = `Item ${idx}`;
       };
 
-    })(document.querySelector('list-view'));
+      list.shouldHeaderStick = (idx) => {
+        return false;
+      };
+
+    })(document.querySelector('layout-vertical'));
   </script>
 
-  <script src="../ListView.es6.js" async></script>
+  <script src="../dist/Layout.es6.js" async></script>
 </body>
 </html>
