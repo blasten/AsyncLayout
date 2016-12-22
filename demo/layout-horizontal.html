@@ -2,19 +2,20 @@
 <html>
 <head>
   <title>ListView</title>
+  <link rel="stylesheet" href="../dist/layout.css">
   <style>
     .item {
-      height: 50px;
+      width: 100px;
     }
 
-    list-view {
-      height: 5000px;
+    layout-horizontal {
+      width: 1000000px;
     }
   </style>
 </head>
 <body>
-  
-  <layout-vertical>
+
+  <layout-horizontal>
     <div class="item">Item 0</div>
     <div class="item">Item 1</div>
     <div class="item">Item 2</div>
@@ -35,29 +36,27 @@
     <div class="item">Item 17</div>
     <div class="item">Item 18</div>
     <div class="item">Item 19</div>
-  </layout-vertical>
+  </layout-horizontal>
 
   <script>
     (function(list) {
 
       list.scrollingElement = document.scrollingElement;
 
-      list.numberOfRows = 10000;
-      list.heightForRow = (idx, container) => {
-        return 50;
+      list.numberOfCells = 10000;
+
+      list.widthForCell = (idx, container) => {
+        return 100;
       };
-      list.domForRow = (idx, container) => {
+
+      list.domForCell = (idx, container) => {
         container.classList.add('item');
         container.innerText = `Item ${idx}`;
       };
 
-      list.shouldHeaderStick = (idx) => {
-        return false;
-      };
-
-    })(document.querySelector('layout-vertical'));
+    })(document.querySelector('layout-horizontal'));
   </script>
 
-  <script src="../dist/Layout.es6.js" async></script>
+  <script src="../dist/Layout.js" async></script>
 </body>
 </html>

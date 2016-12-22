@@ -6,11 +6,13 @@
   "scripts": {
     "test": "mocha",
     "serve": "python server.py",
-    "build": "npm-run-all transpile:list-view-es6",
-    "transpile:list-view-es5": "BABEL_ENV=es5 rollup src/ListView.js -f umd -n ListView -c config/rollup.config.es5.js --output ListView.es5.js",
-    "transpile:list-view-es6": "BABEL_ENV=es6 rollup src/components/all.js -f umd -n Layout -c config/rollup.config.es6.js --output dist/Layout.es6.js",
-    "minify:list-view-es5": "uglifyjs ListView.es5.js -o ListView.es5.min.js",
-    "minify:list-view-es6": "uglifyjs ListView.es6.js -o ListView.es6.min.js"
+    "build": "npm-run-all transpile:list-view-es6 minify:list-view-es6 build:inline-styles",
+    "transpile:list-view-es6": "BABEL_ENV=es6 rollup src/components/all.js -f umd -n Layout -c build/rollup.config.es6.js --output dist/Layout.js",
+    "minify:list-view-es6": "uglifyjs Layout.js -o Layout.min.js",
+    "build:inline-styles": "rollup build/inline-styles.js -f cjs --output dist/inline-styles.js && node dist/inline-styles.js > dist/layout.css && rm -f dist/inline-styles.js",
+
+    "transpile:list-view-es5": "BABEL_ENV=es5 rollup src/ListView.js -f umd -n ListView -c build/rollup.config.es5.js --output ListView.es5.js",
+    "minify:list-view-es5": "uglifyjs ListView.es5.js -o ListView.es5.min.js"
   },
   "repository": {
     "type": "git",

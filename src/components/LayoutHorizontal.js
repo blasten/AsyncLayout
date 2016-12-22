@@ -1,96 +1,39 @@
+import { styleLayoutHorizontal, styleItemContainerHorizontal } from './styles';
+import { forBeforePaint } from '../Async';
 import Recycler from '../Recycler';
 import DomPool from '../DomPool';
-import {forBeforePaint} from '../Async';
-import {listViewStyles} from '../list-view-styles';
 
 export default class LayoutHorizontal extends HTMLElement {
   constructor() {
     super();
     const root = this.attachShadow({ mode: 'open' });
-    root.innerHTML = this._getTemplate(listViewStyles());
-    this._$scrollingElement = root.getElementById('scrollingElement');
-    this._$parentContainer = root.getElementById('parentContainer');
+    root.innerHTML = this._getTemplate();
     this._props = {};
-    this._sumHeights = 0;
+    this._sumWidths = 0;
     this._sumNodes = 0;
     this._scrollDidUpdate = this._scrollDidUpdate.bind(this);
     // Create recyler context.
-    const recycler = new Recycler();
-    // Set the DOM pool for the context.
-    recycler.pool = new DomPool();
-    recycler.parentContainer = this;
-    recycler.initMetaForIndex = this._initMetaForIndex;
-    recycler.shouldRecycle = this._shouldRecycle.bind(this);
-    recycler.isClientFull = this._isClientFull.bind(this);
-    recycler.hasEnoughContent = this._hasEnoughContent.bind(this);
-    recycler.poolIdForIndex = this._poolIdForIndex.bind(this);
-    recycler.layout = this._layout.bind(this);
-    recycler.makeActive = this._makeActive.bind(this);
-    this._recycler = recycler;
-    this._setProps(['numberOfRows', 'domForRow', 'heightForRow', 'scrollingElement']);
-  }
-
-  set poolIdForRow(fn) {
-    this._recycler.poolIdForIndex = fn;
-  }
-
-  get poolIdForIndex() {
-    return this._recycler.poolIdForIndex;
-  }
-
-  set domForRow(fn) {
-    this._props.domForRow = fn;
-    this._recycler.nodeForIndex = (idx, container) => {
-      fn(idx, container);
-    };
-  }
-
-  get domForRow() {
-    return this._props.domForRow;
-  }
-
-  set numberOfRows(size) {
-    this._recycler.size = size;
-  }
-
-  get numberOfRows() {
-    return this._recycler.size;
-  }
-
-  get heightForRow() {
-    return this._props.heightForRow;
-  }
-
-  set heightForRow(fn) {
-    this._props.heightForRow = fn;
-  }
-
-  get scrollingElement() {
-    return this._props.scrollingElement || this;
-  }
-
-  set scrollingElement(se) {
-    if (this._props.scrollingElement) {
-      this._eventTarget(this._props.scrollingElement)
-          .removeEventListener('scroll', this._scrollDidUpdate);
-    }
-    this._props.scrollingElement = se;
-    this._$scrollingElement.style.cssText = se === this ? listViewStyles().yScrollable : '';
-    window.addEventListener('scroll', this._scrollDidUpdate);
-  }
-
-  get _contentHeight() {
-    return this._sumHeights + (this.numberOfRows - this._sumNodes) * (this._sumHeights / this._sumNodes);
-  }
-
-  _eventTarget(se) {
-    const d = document;
-    return se === d.body || se === d.documentElement || !(se instanceof HTMLElement) ? null : se;
+    this._recycler = new Recycler(new DomPool(), {
+      parentContainer: this,
+      initMetaForIndex: this._initMetaForIndex.bind(this),
+      shouldRecycle: this._shouldRecycle.bind(this),
+      isClientFull: this._isClientFull.bind(this),
+      hasEnoughContent: this._hasEnoughContent.bind(this),
+      poolIdForIndex: this._poolIdForIndex.bind(this),
+      layout: this._layout.bind(this),
+      makeActive: this._makeActive.bind(this),
+      nodeForIndex: this._nodeForIndex.bind(this),
+      size: this._size.bind(this)
+    });
+    this._setProps(['poolIdForCell', 'domForCell', 'numberOfCells', 'widthForCell', 'scrollingElement']);
   }
 
   async connectedCallback() {
     this._recycler.mount();
     await forBeforePaint();
+    if (!this.scrollingElement) {
+      this.scrollingElement = document.scrollingElement;
+    }
     this.refresh();
   }
 
@@ -98,15 +41,69 @@ export default class LayoutHorizontal extends HTMLElement {
     this._recycler.unmount();
   }
 
+  set poolIdForCell(fn) {
+    this._props.poolIdForCell = fn;
+  }
+
+  get poolIdForCell() {
+    return this._props.poolIdForCell || (_ => 0);
+  }
+
+  set domForCell(fn) {
+    this._props.domForCell = fn;
+  }
+
+  get domForCell() {
+    return this._props.domForCell;
+  }
+
+  set numberOfCells(size) {
+    this._props.numberOfCells = size;
+  }
+
+  get numberOfCells() {
+    return this._props.numberOfCells || 0;
+  }
+
+  set widthForCell(fn) {
+    this._props.widthForCell = fn;
+  }
+
+  get widthForCell() {
+    return this._props.widthForCell || ((idx, node) => node.getBoundingClientRect().width);
+  }
+
+  set scrollingElement(se) {
+    if (this._props.$scrollingElement) {
+      this._eventTarget(this._props.$scrollingElement)
+          .removeEventListener('scroll', this._scrollDidUpdate);
+    }
+    this._props.$scrollingElement = se;
+    this._eventTarget(se).addEventListener('scroll', this._scrollDidUpdate);
+  }
+
+  get scrollingElement() {
+    return this._props.$scrollingElement;
+  }
+
+  get _contentWidth() {
+    return this._sumWidths + (this.numberOfCells - this._sumNodes) * (this._sumWidths / this._sumNodes);
+  }
+
+  _eventTarget(se) {
+    const d = document;
+    return se === d.body || se === d.documentElement || !(se instanceof HTMLElement) ? window : se;
+  }
+
   _scrollDidUpdate() {
     this.refresh();
   }
 
   async refresh() {
-    this._top = this.scrollingElement.scrollTop;
-    this._clientHeight = this.scrollingElement.clientHeight;
+    this._left = this.scrollingElement.scrollLeft;
+    this._clientWidth = this.scrollingElement.clientWidth;
     await this._recycler.recycle();
-    this._$parentContainer.style.height = `${this._contentHeight}px`;
+    this.style.width = `${this._contentWidth}px`;
   }
 
   _checkThresholds(dist, nodes, metas, from) {
@@ -114,9 +111,9 @@ export default class LayoutHorizontal extends HTMLElement {
       return false;
     }
     if (from == Recycler.START) {
-      return metas.get(this._recycler.startNode).y <= this._top - dist;
+      return metas.get(this._recycler.startNode).x <= this._left - dist;
     }
-    return metas.get(this._recycler.endNode).y >= this._top + this._clientHeight + dist;
+    return metas.get(this._recycler.endNode).x >= this._left + this._clientWidth + dist;
   }
 
   _isClientFull(nodes, metas, from) {
@@ -124,68 +121,68 @@ export default class LayoutHorizontal extends HTMLElement {
   }
 
   _hasEnoughContent(nodes, metas, from) {
-    return this._checkThresholds(this._clientHeight/2, nodes, metas, from);
+    return this._checkThresholds(this._clientWidth/2, nodes, metas, from);
   }
 
   _poolIdForIndex(idx) {
-    return 0;
+    return this.poolIdForCell(idx);
   }
 
   _initMetaForIndex(idx) {
     return {
       idx: idx,
-      h: 0,
-      y: 0
+      w: 0,
+      x: 0
     };
   }
 
   _shouldRecycle(node, meta) {
-    return meta.y + meta.h < this._top - this._clientHeight/2 ||
-        meta.y > this._top + this._clientHeight*1.5;
+    return meta.x + meta.w < this._left - this._clientWidth/2 ||
+        meta.x > this._left + this._clientWidth*1.5;
   }
 
   _layout(node, meta) {
-    // Set initial styles.
     if (node.style.position != 'absolute') {
-      node.style.position = 'absolute';
-      node.style.top = '0px';
-      node.style.willChange = 'transform';
+      node.style.cssText = styleItemContainerHorizontal;
     }
-    node.style.transform = `matrix(1, 0, 0, 1, 0, ${meta.y})`;
+    node.style.transform = `matrix(1, 0, 0, 1, ${meta.x}, 0)`;
   }
 
   _makeActive(node, meta, idx, from, nodes, metas) {
-    meta.h = this._props.heightForRow ?
-        this._props.heightForRow(meta.idx, node) : node.offsetHeight;
-    // Keep track of the heights to estimate the mean.
-    this._sumHeights = this._sumHeights + meta.h;
-    this._sumNodes = this._sumNodes + 1;
-
+    meta.w = this.widthForCell(meta.idx, node);
     if (from == Recycler.START && idx + 1 < nodes.length) {
       let nextM = metas.get(nodes[idx + 1]);
-      meta.y = nextM.y - meta.h;
+      meta.x = nextM.x - meta.w;
     }
     else if (from == Recycler.END && idx > 0) {
       let prevM = metas.get(nodes[idx - 1]);
-      meta.y = prevM.y + prevM.h;
+      meta.x = prevM.x + prevM.w;
     }
     else {
-      meta.y = 0;
+      meta.x = 0;
     }
+    // Keep track of the widths to estimate the mean.
+    this._sumWidths = this._sumWidths + meta.w;
+    this._sumNodes = this._sumNodes + 1;
   }
 
-  _getTemplate(styles) {
+  _nodeForIndex(idx, container) {
+    return this.domForCell(idx, container);
+  }
+
+  _size() {
+    return this.numberOfCells;
+  }
+
+  _getTemplate() {
     return `
       <style>
         :host {
-          display: block;
+          ${styleLayoutHorizontal}
         }
       </style>
-      <div id="scrollingElement" style="${styles.yScrollable}">
-        <div id="parentContainer" style="${styles.parentContainer}">
-          <slot></slot>
-        </div>
-      </div>`;
+      <slot></slot>
+      `;
   }
 
   _setProps(props) {

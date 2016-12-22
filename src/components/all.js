@@ -5,7 +5,5 @@ import LayoutTable from './LayoutTable'
 
 export default {
   LayoutVertical,
-  LayoutHorizontal,
-  LayoutGrid,
-  LayoutTable
+  LayoutHorizontal
 }

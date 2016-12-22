@@ -1,13 +1,13 @@
+import { forBeforePaint } from '../Async';
+import { styleLayoutVertical, styleItemContainerVertical } from './styles';
 import Recycler from '../Recycler';
 import DomPool from '../DomPool';
-import {forBeforePaint} from '../Async';
-import {listViewStyles} from '../list-view-styles';
 
 export default class LayoutTable extends HTMLElement {
   constructor() {
     super();
     const root = this.attachShadow({ mode: 'open' });
-    root.innerHTML = this._getTemplate(listViewStyles());
+    root.innerHTML = this._getTemplate();
     this._$scrollingElement = root.getElementById('scrollingElement');
     this._$parentContainer = root.getElementById('parentContainer');
     this._props = {};
@@ -75,7 +75,7 @@ export default class LayoutTable extends HTMLElement {
           .removeEventListener('scroll', this._scrollDidUpdate);
     }
     this._props.scrollingElement = se;
-    this._$scrollingElement.style.cssText = se === this ? listViewStyles().yScrollable : '';
+    this._$scrollingElement.style.cssText = se === this ? styles.yScrollable : '';
     window.addEventListener('scroll', this._scrollDidUpdate);
   }
 
@@ -174,7 +174,7 @@ export default class LayoutTable extends HTMLElement {
     }
   }
 
-  _getTemplate(styles) {
+  _getTemplate() {
     return `
       <style>
         :host {
