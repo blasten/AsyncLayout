@@ -37,7 +37,7 @@ export const styleItemContainerHorizontal = `
 `;
 
 
-export const styleItemContainerVertical = `
+export const styleItemContainerTopVertical = `
   position: absolute;
   top: 0;
   left: 0;
@@ -45,3 +45,10 @@ export const styleItemContainerVertical = `
   will-change: transform;
 `;
 
+export const styleItemContainerBottomVertical = `
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  will-change: transform;
+`;

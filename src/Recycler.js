@@ -3,9 +3,9 @@ import { clamp } from './utils';
 import DomPool from './DomPool';
 
 export default class Recycler {
-  constructor(pool, props) {
-    if (!(pool instanceof DomPool)) {
-      throw new TypeError('Invalid pool type');
+  constructor(pool, meta, props) {
+    if (!(pool instanceof DomPool) || !(meta instanceof WeakMap)) {
+      throw new TypeError('Invalid arg type');
     }
     this._props = props;
     this._size = 0;
@@ -13,7 +13,7 @@ export default class Recycler {
     this._jobId = 0;
     this._nodes = [];
     this._isMounted  = false;
-    this.meta = new WeakMap();
+    this.meta = meta;
   }
 
   get mounted() {

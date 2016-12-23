@@ -1,4 +1,5 @@
-import { styleLayoutVertical, styleItemContainerVertical } from './styles';
+import { styleLayoutVertical, styleItemContainerTopVertical } from './styles';
+import { getApproxSize, eventTarget } from '../utils';
 import { forBeforePaint } from '../Async';
 import Recycler from '../Recycler';
 import DomPool from '../DomPool';
@@ -6,26 +7,34 @@ import DomPool from '../DomPool';
 export default class LayoutVertical extends HTMLElement {
   constructor() {
     super();
-    const root = this.attachShadow({ mode: 'open' });
-    root.innerHTML = this._getTemplate();
+    this.style.cssText = styleLayoutVertical;
     this._props = {};
     this._sumHeights = 0;
     this._sumNodes = 0;
     this._scrollDidUpdate = this._scrollDidUpdate.bind(this);
     // Create recyler context.
-    this._recycler = new Recycler(new DomPool(), {
-      parentContainer: this,
-      initMetaForIndex: this._initMetaForIndex.bind(this),
-      shouldRecycle: this._shouldRecycle.bind(this),
-      isClientFull: this._isClientFull.bind(this),
-      hasEnoughContent: this._hasEnoughContent.bind(this),
-      poolIdForIndex: this._poolIdForIndex.bind(this),
-      layout: this._layout.bind(this),
-      makeActive: this._makeActive.bind(this),
-      nodeForIndex: this._nodeForIndex.bind(this),
-      size: this._size.bind(this)
-    });
-    this._setProps(['poolIdForCell', 'domForCell', 'numberOfCells', 'heightForCell', 'scrollingElement']);
+    this._recycler = new Recycler(
+      new DomPool(),
+      new WeakMap(),
+      {
+        parentContainer: this,
+        initMetaForIndex: this._initMetaForIndex.bind(this),
+        shouldRecycle: this._shouldRecycle.bind(this),
+        isClientFull: this._isClientFull.bind(this),
+        hasEnoughContent: this._hasEnoughContent.bind(this),
+        poolIdForIndex: this._poolIdForIndex.bind(this),
+        layout: this._layout.bind(this),
+        makeActive: this._makeActive.bind(this),
+        nodeForIndex: this._nodeForIndex.bind(this),
+        size: this._size.bind(this)
+      });
+    this._setProps([
+      'poolIdForCell'
+      'domForCell',
+      'numberOfCells',
+      'heightForCell',
+      'scrollingElement'
+    ]);
   }
 
   async connectedCallback() {
@@ -34,7 +43,7 @@ export default class LayoutVertical extends HTMLElement {
     if (!this.scrollingElement) {
       this.scrollingElement = document.scrollingElement;
     }
-    this.refresh();
+    await this.refresh();
   }
 
   disconnectedCallback() {
@@ -75,11 +84,11 @@ export default class LayoutVertical extends HTMLElement {
 
   set scrollingElement(se) {
     if (this._props.$scrollingElement) {
-      this._eventTarget(this._props.$scrollingElement)
+      eventTarget(this._props.$scrollingElement)
           .removeEventListener('scroll', this._scrollDidUpdate);
     }
     this._props.$scrollingElement = se;
-    this._eventTarget(se).addEventListener('scroll', this._scrollDidUpdate);
+    eventTarget(se).addEventListener('scroll', this._scrollDidUpdate);
   }
 
   get scrollingElement() {
@@ -87,12 +96,7 @@ export default class LayoutVertical extends HTMLElement {
   }
 
   get _contentHeight() {
-    return this._sumHeights + (this.numberOfCells - this._sumNodes) * (this._sumHeights / this._sumNodes);
-  }
-
-  _eventTarget(se) {
-    const d = document;
-    return se === d.body || se === d.documentElement || !(se instanceof HTMLElement) ? window : se;
+    return getApproxSize(this._sumHeights, this._sumNodes, this.numberOfCells);
   }
 
   _scrollDidUpdate() {
@@ -129,11 +133,7 @@ export default class LayoutVertical extends HTMLElement {
   }
 
   _initMetaForIndex(idx) {
-    return {
-      idx: idx,
-      h: 0,
-      y: 0
-    };
+    return { idx: idx, h: 0, y: 0 };
   }
 
   _shouldRecycle(node, meta) {
@@ -143,7 +143,7 @@ export default class LayoutVertical extends HTMLElement {
 
   _layout(node, meta) {
     if (node.style.position != 'absolute') {
-      node.style.cssText = styleItemContainerVertical;
+      node.style.cssText = styleItemContainerTopVertical;
     }
     node.style.transform = `matrix(1, 0, 0, 1, 0, ${meta.y})`;
   }
@@ -172,17 +172,6 @@ export default class LayoutVertical extends HTMLElement {
 
   _size() {
     return this.numberOfCells;
-  }
-
-  _getTemplate() {
-    return `
-      <style>
-        :host {
-          ${styleLayoutVertical}
-        }
-      </style>
-      <slot></slot>
-      `;
   }
 
   _setProps(props) {

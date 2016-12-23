@@ -1,3 +1,7 @@
+export function forNextTick() {
+  return Promise.resolve();
+}
+
 export function forIdleTime() {
   return new Promise(function(resolve) {
     const w = window;
