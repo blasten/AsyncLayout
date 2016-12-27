@@ -28,7 +28,7 @@ export default class LayoutHorizontal extends HTMLElement {
         size: this._size.bind(this)
       });
     this._setProps([
-      'poolIdForCell'
+      'poolIdForCell',
       'domForCell',
       'numberOfCells',
       'widthForCell',

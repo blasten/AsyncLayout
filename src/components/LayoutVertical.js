@@ -29,7 +29,7 @@ export default class LayoutVertical extends HTMLElement {
         size: this._size.bind(this)
       });
     this._setProps([
-      'poolIdForCell'
+      'poolIdForCell',
       'domForCell',
       'numberOfCells',
       'heightForCell',

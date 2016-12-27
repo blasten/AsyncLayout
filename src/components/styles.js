@@ -36,7 +36,6 @@ export const styleItemContainerHorizontal = `
   will-change: transform;
 `;
 
-
 export const styleItemContainerTopVertical = `
   position: absolute;
   top: 0;

@@ -5,5 +5,6 @@ import LayoutTable from './LayoutTable'
 
 export default {
   LayoutVertical,
-  LayoutHorizontal
+  LayoutHorizontal,
+  LayoutTable
 }
