@@ -1,5 +1,5 @@
 import { forBeforePaint } from '../Async';
-import { styleLayoutVertical, styleItemContainerVertical } from './styles';
+import { styleLayoutVertical } from './styles';
 import Recycler from '../Recycler';
 import DomPool from '../DomPool';
 

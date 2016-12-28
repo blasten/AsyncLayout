@@ -26,7 +26,7 @@ export function getRowOffset(meta, idx, from, nodes, metas) {
     let prevM = metas.get(nodes[idx - 1]);
     return prevM.y + prevM.h;
   }
-  return 0;
+  return meta.y;
 }
 
 export function getColumnOffset(meta, idx, from, nodes, metas) {
@@ -38,7 +38,7 @@ export function getColumnOffset(meta, idx, from, nodes, metas) {
     let prevM = metas.get(nodes[idx - 1]);
     return prevM.x + prevM.w;
   }
-  return 0;
+  return meta.x;
 }
 
 export function shouldRecycleRow(node, meta, offset, size) {

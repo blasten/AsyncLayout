@@ -176,6 +176,7 @@ export default class LayoutTable extends HTMLElement {
       meta.recycler.nodeForIndex = this._cellForIndex;
       meta.recycler.poolIdForIndex = idx => this.poolIdForCell(idx);
       meta.recycler.size = _ => this.numberOfColumns;
+      meta.recycler.createNodeContainer = _ => document.createElement('div');
     }
     meta.recycler.layout = this._layoutCell.bind(null, meta);
     meta.recycler.mount();

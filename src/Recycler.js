@@ -152,6 +152,7 @@ export default class Recycler {
     let idx, poolId;
     const nodes = this._nodes;
     const metas = this._pool.meta;
+
     if (nodes.length === 0) {
       idx = this.initIndex();
       poolId = this.poolIdForIndex(idx);
@@ -177,6 +178,7 @@ export default class Recycler {
     let idx;
     const nodes = this._nodes;
     const metas = this._pool.meta;
+
     if (nodes.length == 0) {
       idx = this.initIndex();
     }
@@ -186,9 +188,14 @@ export default class Recycler {
     else {
       idx = metas.get(this.endNode).idx + 1;
     }
-    invariant(idx >= 0 && idx < this.size(), 'invalid range');
+    if (idx < 0 || idx >= this.size()) {
+      return;
+    }
+
     const node = this.createNodeContainer();
     const metaForNode = this.initMetaForIndex(idx);
+
+    invariant(node.dataset && node.style, 'invalid node container');
     node.dataset.poolId = this.poolIdForIndex(idx);
     metas.set(node, metaForNode);
     this.nodeForIndex(idx, node, metaForNode);
@@ -196,7 +203,7 @@ export default class Recycler {
   }
 
   createNodeContainer() {
-    return document.createElement('div');
+    return null;
   }
 
   shouldRecycle(node, meta) {

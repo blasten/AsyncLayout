@@ -22,7 +22,9 @@ export default class LayoutVertical extends HTMLElement {
     r.layout = this._layout.bind(this);
     r.makeActive = this._makeActive.bind(this);
     r.nodeForIndex = this._nodeForIndex.bind(this);
+    r.initIndex = this._initIndex.bind(this);
     r.size = _ => this.numberOfCells;
+    r.createNodeContainer = _ => document.createElement('div');
     this._recycler = r;
 
     setProps(this, [
@@ -121,8 +123,13 @@ export default class LayoutVertical extends HTMLElement {
     return this.poolIdForCell(idx);
   }
 
+  _initIndex() {
+    const itemHeightMean = this._sumHeights/this._sumNodes;
+    return ~~(this._top/itemHeightMean);
+  }
+
   _initMetaForIndex(idx) {
-    return { idx: idx, h: 0, y: 0 };
+    return { idx: idx, h: 0, y: this._top };
   }
 
   _shouldRecycle(node, meta) {

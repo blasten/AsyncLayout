@@ -23,6 +23,7 @@ export default class LayoutHorizontal extends HTMLElement {
     r.makeActive = this._makeActive.bind(this);
     r.nodeForIndex = this._nodeForIndex.bind(this);
     r.size = _ => this.numberOfCells;
+    r.createNodeContainer = _ => document.createElement('div');
     this._recycler = r;
 
     setProps(this, [
