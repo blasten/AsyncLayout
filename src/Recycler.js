@@ -3,17 +3,18 @@ import { clamp } from './utils';
 import DomPool from './DomPool';
 
 export default class Recycler {
-  constructor(pool, meta, props) {
-    if (!(pool instanceof DomPool) || !(meta instanceof WeakMap)) {
+  constructor(container, pool, props) {
+    if (!(pool instanceof DomPool)) {
       throw new TypeError('Invalid arg type');
     }
+    this._container = container;
     this._props = props;
     this._size = 0;
     this._pool = pool;
     this._jobId = 0;
     this._nodes = [];
     this._isMounted  = false;
-    this.meta = meta;
+    this.meta = new WeakMap();
   }
 
   get mounted() {
@@ -22,7 +23,7 @@ export default class Recycler {
 
   async mount() {
     this._isMounted = true;
-    this._putNodesInPool(this._props.parentContainer.children);
+    this._putNodesInPool(this._container && this._container.children);
   }
 
   async recycle() {
@@ -38,7 +39,7 @@ export default class Recycler {
       return;
     }
     // Schedule onscreen work.
-    while (!this._props.isClientFull(this._nodes, this.meta, from)) {
+    while (!this._props.isClientFull(this.startMeta, this.endMeta, from)) {
       let now = performance.now();
       nextIncrement = this._populateClient(from, nextIncrement);
       if (nextIncrement === 0) {
@@ -48,15 +49,15 @@ export default class Recycler {
       nextIncrement = nextIncrement * 2;
     }
     // Schedule offscreen work.
-    if (nextIncrement > 0 && !this._props.hasEnoughContent(this._nodes, this.meta, from)) {
-      let idle = await forIdleTime();
-      nextIncrement = clamp(~~(idle.timeRemaining() / this._unitCost), 1, nextIncrement);
-      await this._recycle(from, this._populateClient(from, nextIncrement) * 2, jobId);
-    }
+    // if (nextIncrement > 0 && !this._props.hasEnoughContent(this.startMeta, this.endMeta, from)) {
+    //   let idle = await forIdleTime();
+    //   nextIncrement = clamp(~~(idle.timeRemaining() / this._unitCost), 1, nextIncrement);
+    //   await this._recycle(from, this._populateClient(from, nextIncrement) * 2, jobId);
+    // }
   }
 
   _putNodesInPool(nodes) {
-    Array.from(nodes).forEach(node => this._putInPool(node));
+    nodes && Array.from(nodes).forEach(node => this._putInPool(node));
   }
 
   _putInPool(node) {
@@ -106,14 +107,14 @@ export default class Recycler {
       from == Recycler.START && i >= 0;
       i--
     ) {
-      this._props.makeActive(nodes[i], meta.get(nodes[i]), i, from, nodes,meta);
+      this._props.makeActive(nodes[i], meta.get(nodes[i]), nodes, meta, i, from);
     }
     for (
       let i = nodes.length - updates;
       from == Recycler.END && i < nodes.length;
       i++
     ) {
-      this._props.makeActive(nodes[i], meta.get(nodes[i]), i, from, nodes, meta);
+      this._props.makeActive(nodes[i], meta.get(nodes[i]), nodes, meta, i, from);
     }
     // write
     for (
@@ -135,7 +136,7 @@ export default class Recycler {
 
   _pushToClient(node, from) {
     const nodes = this._nodes;
-    const parentContainer = this._props.parentContainer;
+    const parentContainer = this._container;
     from == Recycler.START ? nodes.unshift(node) : nodes.push(node);
 
     if (parentContainer && node.parentNode !== parentContainer) {
@@ -160,8 +161,9 @@ export default class Recycler {
     }
     const node = Recycler.START ? this._pool.shift(poolId) : this._pool.pop(poolId);
     if (node) {
-      this._props.nodeForIndex(idx, node);
-      this.meta.set(node, this._props.initMetaForIndex(idx, node));
+      const metaForNode = this._props.initMetaForIndex(idx);
+      this.meta.set(node, metaForNode);
+      this._props.nodeForIndex(idx, node, metaForNode);
     }
     return node;
   }
@@ -181,11 +183,19 @@ export default class Recycler {
     if (idx < 0 || idx >= this._props.size()) {
       return null;
     }
-    const node = document.createElement('div');
+    const node = this._container ? document.createElement('div') : this._vnode();
+    const metaForNode = this._props.initMetaForIndex(idx);
     node.dataset.poolId = this._props.poolIdForIndex(idx);
-    this._props.nodeForIndex(idx, node);
-    this.meta.set(node, this._props.initMetaForIndex(idx, node));
+    this.meta.set(node, metaForNode);
+    this._props.nodeForIndex(idx, node, metaForNode);
     return node;
+  }
+
+  _vnode() {
+    return {
+      dataset: {},
+      style: {}
+    };
   }
 
   _removeFromActive(node, index) {
@@ -193,11 +203,19 @@ export default class Recycler {
   }
 
   get startNode() {
-    return this._nodes[0] || null;
+    return this._nodes[0];
   }
 
   get endNode() {
-    return this._nodes.length === 0 ? null : this._nodes[this._nodes.length - 1];
+    return this._nodes[this._nodes.length - 1];
+  }
+
+  get startMeta() {
+    return this.meta.get(this.startNode) || {};
+  }
+
+  get endMeta() {
+    return this.meta.get(this.endNode) || {};
   }
 
   static get START() {

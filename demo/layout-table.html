@@ -16,7 +16,7 @@
   </style>
 </head>
 <body>
-  
+
   <layout-table>
     <!-- <div class="item">Item 0</div>
     <div class="item">Item 1</div>
@@ -48,11 +48,11 @@
       list.numberOfRows = 100;
       list.numberOfColumns = 100;
 
-      list.widthForCell = (idx, container) => {
+      list.widthForColumn = (idx, container) => {
         return 100;
       };
 
-      list.heightForCell = (idx, container) => {
+      list.heightForRow = (idx, container) => {
         return 50;
       };
       list.domForCell = (idx, container) => {

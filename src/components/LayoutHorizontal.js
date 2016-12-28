@@ -13,10 +13,9 @@ export default class LayoutHorizontal extends HTMLElement {
     this._scrollDidUpdate = this._scrollDidUpdate.bind(this);
     // Create recyler context.
     this._recycler = new Recycler(
+      this,
       new DomPool(),
-      new WeakMap(),
       {
-        parentContainer: this,
         initMetaForIndex: this._initMetaForIndex.bind(this),
         shouldRecycle: this._shouldRecycle.bind(this),
         isClientFull: this._isClientFull.bind(this),
