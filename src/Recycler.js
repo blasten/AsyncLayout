@@ -80,6 +80,7 @@ export default class Recycler {
   _populateClient(from, nextIncrement) {
     const nodes = this._nodes;
     const metas = this._pool.meta;
+    // Enqueue node available for recycling.
     while (
       from == Recycler.END &&
       nodes.length > 0 &&
@@ -96,6 +97,7 @@ export default class Recycler {
       this._putInPool(nodes[nodes.length - 1]);
       nodes.splice(nodes.length - 1, 1);
     }
+    // Dequeue node or allocate a new one.
     let updates = 0;
     let node;
     while (
@@ -105,7 +107,7 @@ export default class Recycler {
       this._pushToClient(node, from);
       updates++;
     }
-    // read
+    // Read.
     for (
       let i = updates - 1;
       from == Recycler.START && i >= 0;
@@ -120,7 +122,7 @@ export default class Recycler {
     ) {
       this.makeActive(nodes[i], metas.get(nodes[i]), nodes, metas, i, from);
     }
-    // write
+    // Write.
     for (
       let i = updates - 1;
       from == Recycler.START && i >= 0;
