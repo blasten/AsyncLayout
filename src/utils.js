@@ -58,3 +58,7 @@ export function setProps(self, props) {
     }
   });
 }
+
+export function vdom() {
+  return { dataset: {}, style: {} }
+}

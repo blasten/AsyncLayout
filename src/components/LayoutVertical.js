@@ -1,5 +1,5 @@
 import { styleLayoutVertical, styleItemContainerTopVertical } from './styles';
-import { getApproxSize, eventTarget } from '../utils';
+import { getApproxSize, eventTarget, checkThreshold, setProps, getRowOffset } from '../utils';
 import { forBeforePaint } from '../Async';
 import Recycler from '../Recycler';
 import DomPool from '../DomPool';
@@ -13,21 +13,19 @@ export default class LayoutVertical extends HTMLElement {
     this._sumNodes = 0;
     this._scrollDidUpdate = this._scrollDidUpdate.bind(this);
     // Create recyler context.
-    this._recycler = new Recycler(
-      this,
-      new DomPool(),
-      {
-        initMetaForIndex: this._initMetaForIndex.bind(this),
-        shouldRecycle: this._shouldRecycle.bind(this),
-        isClientFull: this._isClientFull.bind(this),
-        hasEnoughContent: this._hasEnoughContent.bind(this),
-        poolIdForIndex: this._poolIdForIndex.bind(this),
-        layout: this._layout.bind(this),
-        makeActive: this._makeActive.bind(this),
-        nodeForIndex: this._nodeForIndex.bind(this),
-        size: this._size.bind(this)
-      });
-    this._setProps([
+    const r = new Recycler(this, new DomPool());
+    r.initMetaForIndex = this._initMetaForIndex.bind(this);
+    r.shouldRecycle = this._shouldRecycle.bind(this);
+    r.isClientFull = this._isClientFull.bind(this);
+    r.hasEnoughContent = this._hasEnoughContent.bind(this);
+    r.poolIdForIndex = this._poolIdForIndex.bind(this);
+    r.layout = this._layout.bind(this);
+    r.makeActive = this._makeActive.bind(this);
+    r.nodeForIndex = this._nodeForIndex.bind(this);
+    r.size = _ => this.numberOfCells;
+    this._recycler = r;
+
+    setProps(this, [
       'poolIdForCell',
       'domForCell',
       'numberOfCells',
@@ -109,22 +107,14 @@ export default class LayoutVertical extends HTMLElement {
     this.style.height = `${this._contentHeight}px`;
   }
 
-  _checkThresholds(dist, nodes, metas, from) {
-    if (nodes.length == 0) {
-      return false;
-    }
-    if (from == Recycler.START) {
-      return metas.get(this._recycler.startNode).y <= this._top - dist;
-    }
-    return metas.get(this._recycler.endNode).y >= this._top + this._clientHeight + dist;
+  _isClientFull(startMeta, endMeta, from) {
+    return checkThreshold(startMeta.y, endMeta.y, 0, this._top,
+        this._clientHeight, from);
   }
 
-  _isClientFull(nodes, metas, from) {
-    return this._checkThresholds(0, nodes, metas, from);
-  }
-
-  _hasEnoughContent(nodes, metas, from) {
-    return this._checkThresholds(this._clientHeight/2, nodes, metas, from);
+  _hasEnoughContent(startMeta, endMeta, from) {
+    return checkThreshold(startMeta.y, endMeta.y, this._clientHeight/2,
+        this._top, this._clientHeight, from);
   }
 
   _poolIdForIndex(idx) {
@@ -147,19 +137,9 @@ export default class LayoutVertical extends HTMLElement {
     node.style.transform = `matrix(1, 0, 0, 1, 0, ${meta.y})`;
   }
 
-  _makeActive(node, meta, idx, from, nodes, metas) {
+  _makeActive(node, meta, nodes, metas, idx, from) {
     meta.h = this.heightForCell(meta.idx, node);
-    if (from == Recycler.START && idx + 1 < nodes.length) {
-      let nextM = metas.get(nodes[idx + 1]);
-      meta.y = nextM.y - meta.h;
-    }
-    else if (from == Recycler.END && idx > 0) {
-      let prevM = metas.get(nodes[idx - 1]);
-      meta.y = prevM.y + prevM.h;
-    }
-    else {
-      meta.y = 0;
-    }
+    meta.y = getRowOffset(meta, idx, from, nodes, metas);
     // Keep track of the widths to estimate the mean.
     this._sumHeights = this._sumHeights + meta.h;
     this._sumNodes = this._sumNodes + 1;
@@ -167,20 +147,6 @@ export default class LayoutVertical extends HTMLElement {
 
   _nodeForIndex(idx, container) {
     return this.domForCell(idx, container);
-  }
-
-  _size() {
-    return this.numberOfCells;
-  }
-
-  _setProps(props) {
-    props.forEach((prop) => {
-      if (this.hasOwnProperty(prop)) {
-        let propVal = this[prop];
-        delete this[prop];
-        this[prop] = propVal;
-      }
-    });
   }
 }
 

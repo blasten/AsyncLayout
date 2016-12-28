@@ -1,5 +1,6 @@
 import { styleLayoutHorizontal, styleItemContainerHorizontal } from './styles';
 import { forBeforePaint } from '../Async';
+import { eventTarget, checkThreshold, setProps, getColumnOffset, getApproxSize } from '../utils'
 import Recycler from '../Recycler';
 import DomPool from '../DomPool';
 
@@ -12,27 +13,26 @@ export default class LayoutHorizontal extends HTMLElement {
     this._sumNodes = 0;
     this._scrollDidUpdate = this._scrollDidUpdate.bind(this);
     // Create recyler context.
-    this._recycler = new Recycler(
-      this,
-      new DomPool(),
-      {
-        initMetaForIndex: this._initMetaForIndex.bind(this),
-        shouldRecycle: this._shouldRecycle.bind(this),
-        isClientFull: this._isClientFull.bind(this),
-        hasEnoughContent: this._hasEnoughContent.bind(this),
-        poolIdForIndex: this._poolIdForIndex.bind(this),
-        layout: this._layout.bind(this),
-        makeActive: this._makeActive.bind(this),
-        nodeForIndex: this._nodeForIndex.bind(this),
-        size: this._size.bind(this)
-      });
-    this._setProps([
+    const r = new Recycler(this, new DomPool());
+    r.initMetaForIndex = this._initMetaForIndex.bind(this);
+    r.shouldRecycle = this._shouldRecycle.bind(this);
+    r.isClientFull = this._isClientFull.bind(this);
+    r.hasEnoughContent = this._hasEnoughContent.bind(this);
+    r.poolIdForIndex = this._poolIdForIndex.bind(this);
+    r.layout = this._layout.bind(this);
+    r.makeActive = this._makeActive.bind(this);
+    r.nodeForIndex = this._nodeForIndex.bind(this);
+    r.size = _ => this.numberOfCells;
+    this._recycler = r;
+
+    setProps(this, [
       'poolIdForCell',
       'domForCell',
       'numberOfCells',
       'widthForCell',
       'scrollingElement'
-    ]);
+      ]
+    );
   }
 
   async connectedCallback() {
@@ -108,22 +108,14 @@ export default class LayoutHorizontal extends HTMLElement {
     this.style.width = `${this._contentWidth}px`;
   }
 
-  _checkThresholds(dist, nodes, metas, from) {
-    if (nodes.length == 0) {
-      return false;
-    }
-    if (from == Recycler.START) {
-      return metas.get(this._recycler.startNode).x <= this._left - dist;
-    }
-    return metas.get(this._recycler.endNode).x >= this._left + this._clientWidth + dist;
+  _isClientFull(startMeta, endMeta, from) {
+    return checkThreshold(startMeta.x, endMeta.x, 0, this._left,
+        this._clientWidth, from);
   }
 
-  _isClientFull(nodes, metas, from) {
-    return this._checkThresholds(0, nodes, metas, from);
-  }
-
-  _hasEnoughContent(nodes, metas, from) {
-    return this._checkThresholds(this._clientWidth/2, nodes, metas, from);
+  _hasEnoughContent(startMeta, endMeta, from) {
+    return checkThreshold(startMeta.x, endMeta.x, this._clientWidth/2,
+        this._left, this._clientWidth, from);
   }
 
   _poolIdForIndex(idx) {
@@ -146,19 +138,9 @@ export default class LayoutHorizontal extends HTMLElement {
     node.style.transform = `matrix(1, 0, 0, 1, ${meta.x}, 0)`;
   }
 
-  _makeActive(node, meta, idx, from, nodes, metas) {
+  _makeActive(node, meta, nodes, metas, idx, from) {
     meta.w = this.widthForCell(meta.idx, node);
-    if (from == Recycler.START && idx + 1 < nodes.length) {
-      let nextM = metas.get(nodes[idx + 1]);
-      meta.x = nextM.x - meta.w;
-    }
-    else if (from == Recycler.END && idx > 0) {
-      let prevM = metas.get(nodes[idx - 1]);
-      meta.x = prevM.x + prevM.w;
-    }
-    else {
-      meta.x = 0;
-    }
+    meta.x = getColumnOffset(meta, idx, from, nodes, metas);
     // Keep track of the widths to estimate the mean.
     this._sumWidths = this._sumWidths + meta.w;
     this._sumNodes = this._sumNodes + 1;
@@ -166,20 +148,6 @@ export default class LayoutHorizontal extends HTMLElement {
 
   _nodeForIndex(idx, container) {
     return this.domForCell(idx, container);
-  }
-
-  _size() {
-    return this.numberOfCells;
-  }
-
-  _setProps(props) {
-    props.forEach((prop) => {
-      if (this.hasOwnProperty(prop)) {
-        let propVal = this[prop];
-        delete this[prop];
-        this[prop] = propVal;
-      }
-    });
   }
 }
 

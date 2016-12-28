@@ -1,6 +1,11 @@
 export default class DomPool {
   constructor() {
     this._pools = {};
+    this._meta = new WeakMap();
+  }
+
+  get meta() {
+    return this._meta;
   }
 
   push(poolId, obj) {
