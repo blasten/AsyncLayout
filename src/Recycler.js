@@ -87,7 +87,7 @@ export default class Recycler {
       this._shouldRecycle(nodes[0])
     ) {
       this._putInPool(nodes[0]);
-      nodes.splice(0, 1);
+      nodes.shift();
     }
     while (
       from == Recycler.START &&
@@ -95,7 +95,7 @@ export default class Recycler {
       this._shouldRecycle(nodes[nodes.length - 1])
     ) {
       this._putInPool(nodes[nodes.length - 1]);
-      nodes.splice(nodes.length - 1, 1);
+      nodes.pop();
     }
     // Dequeue node or allocate a new one.
     let updates = 0;
