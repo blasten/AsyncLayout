@@ -1,12 +1,10 @@
 import { forIdleTime, forBeforePaint } from './Async';
-import { clamp } from './utils';
+import { invariant, clamp } from './utils';
 import DomPool from './DomPool';
 
 export default class Recycler {
   constructor(container, pool) {
-    if (!(pool instanceof DomPool)) {
-      throw new TypeError('Invalid arg type');
-    }
+    invariant(pool instanceof DomPool, 'Invalid pool type');
     this._container = container;
     this._size = 0;
     this._pool = pool;
@@ -84,7 +82,7 @@ export default class Recycler {
     const metas = this._pool.meta;
     while (
       from == Recycler.END &&
-      nodes.length > 1 &&
+      nodes.length > 0 &&
       this._shouldRecycle(nodes[0])
     ) {
       this._putInPool(nodes[0]);
@@ -92,7 +90,7 @@ export default class Recycler {
     }
     while (
       from == Recycler.START &&
-      nodes.length > 1 &&
+      nodes.length > 0 &&
       this._shouldRecycle(nodes[nodes.length - 1])
     ) {
       this._putInPool(nodes[nodes.length - 1]);
@@ -155,8 +153,8 @@ export default class Recycler {
     const nodes = this._nodes;
     const metas = this._pool.meta;
     if (nodes.length === 0) {
-      idx = 0;
-      poolId = this.poolIdForIndex(0);
+      idx = this.initIndex();
+      poolId = this.poolIdForIndex(idx);
     }
     else if (from == Recycler.START) {
       idx = metas.get(this.startNode).idx - 1;
@@ -180,7 +178,7 @@ export default class Recycler {
     const nodes = this._nodes;
     const metas = this._pool.meta;
     if (nodes.length == 0) {
-      idx = 0;
+      idx = this.initIndex();
     }
     else if (from == Recycler.START) {
       idx = metas.get(this.startNode).idx - 1;
@@ -188,9 +186,7 @@ export default class Recycler {
     else {
       idx = metas.get(this.endNode).idx + 1;
     }
-    if (idx < 0 || idx >= this.size()) {
-      return null;
-    }
+    invariant(idx >= 0 && idx < this.size(), 'invalid range');
     const node = this.createNodeContainer();
     const metaForNode = this.initMetaForIndex(idx);
     node.dataset.poolId = this.poolIdForIndex(idx);
@@ -237,6 +233,10 @@ export default class Recycler {
 
   initMetaForIndex(idx) {
     return { idx: idx };
+  }
+
+  initIndex() {
+    return 0;
   }
 
   get startNode() {

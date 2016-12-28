@@ -62,3 +62,9 @@ export function setProps(self, props) {
 export function vdom() {
   return { dataset: {}, style: {} }
 }
+
+export function invariant(condition, errorMsg) {
+  if (!condition) {
+    throw new Error(errorMsg);
+  }
+}
