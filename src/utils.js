@@ -42,11 +42,11 @@ export function getColumnOffset(meta, idx, from, nodes, metas) {
 }
 
 export function shouldRecycleRow(node, meta, offset, size) {
-  return meta.y + meta.h < offset - size/2 || meta.y > offset + size*1.5
+  return meta.y + meta.h < offset || meta.y > offset + size
 }
 
 export function shouldRecycleColumn(node, meta, offset, size) {
-  return meta.x + meta.w < offset - size/2 || meta.x > offset + size*1.5
+  return meta.x + meta.w < offset || meta.x > offset + size
 }
 
 export function setProps(self, props) {
@@ -59,7 +59,7 @@ export function setProps(self, props) {
   });
 }
 
-export function vdom() {
+export function vnode() {
   return { dataset: {}, style: {} }
 }
 

@@ -37,16 +37,15 @@ export default class LayoutHorizontal extends HTMLElement {
   }
 
   async connectedCallback() {
-    this._recycler.mount();
     await forBeforePaint();
     if (!this.scrollingElement) {
       this.scrollingElement = document.scrollingElement;
     }
+    this._recycler.enqueuePrerendered();
     this.refresh();
   }
 
   disconnectedCallback() {
-    this._recycler.unmount();
   }
 
   set poolIdForCell(fn) {

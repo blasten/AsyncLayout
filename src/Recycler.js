@@ -10,20 +10,6 @@ export default class Recycler {
     this._pool = pool;
     this._jobId = 0;
     this._nodes = [];
-    this._isMounted = false;
-  }
-
-  mount() {
-    if (this._container) {
-      Array.from(this._container.children)
-        .filter(node => !this._pool.meta.has(node))
-        .forEach(node => this._putInPool(node));
-    }
-    this._isMounted = true;
-  }
-
-  unmount() {
-    this._isMounted = false;
   }
 
   async recycle() {
@@ -34,34 +20,41 @@ export default class Recycler {
     await this._recycle(Recycler.END, 1, this._jobId);
   }
 
-  async _recycle(from, nextIncrement, jobId) {
-    if (!this._isMounted || this._jobId != jobId) {
+  async _recycle(from, increment, jobId) {
+    if (this._jobId != jobId) {
       return;
     }
+    var x = 0;
     // Schedule onscreen work.
     while (!this.isClientFull(this.startMeta, this.endMeta, from)) {
       let now = performance.now();
-      nextIncrement = this._populateClient(from, nextIncrement);
-      if (nextIncrement === 0) {
+      if ((increment = this._populateClient(from, increment)) === 0) {
         break;
       }
-      this._unitCost = (performance.now() - now) / nextIncrement;
-      nextIncrement = nextIncrement * 2;
+      this._unitCost = (performance.now() - now) / increment;
+      if (++x > 100) {
+        console.error('inf');
+        break;
+      }
+      //increment = ~~(increment*1.5);
     }
     // Schedule offscreen work.
-    // if (nextIncrement > 0 && !this.hasEnoughContent(this.startMeta, this.endMeta, from)) {
+    // if (increment > 0 && !this.hasEnoughContent(this.startMeta, this.endMeta, from)) {
     //   let idle = await forIdleTime();
-    //   nextIncrement = clamp(~~(idle.timeRemaining() / this._unitCost), 1, nextIncrement);
-    //   await this._recycle(from, this._populateClient(from, nextIncrement) * 2, jobId);
+    //   increment = clamp(~~(idle.timeRemaining() / this._unitCost), 1, this._nodes.length);
+    //   await this._recycle(from, this._populateClient(from, increment) * 2, jobId);
     // }
   }
 
-  async recycleAll() {
-    this._nodes.forEach(function(node) {
-      this._putInPool(node);
-    }, this);
+  enqueuePrerendered() {
+    Array.from(this._container.children)
+      .filter(node => !this._pool.meta.has(node))
+      .forEach(node => this._putInPool(node));
+  }
+
+  enqueueRendered() {
+    this._nodes.forEach(node => this._putInPool(node));
     this._nodes = [];
-    await this.recycle();
   }
 
   _putInPool(node) {
@@ -69,7 +62,7 @@ export default class Recycler {
       node.dataset.poolId = 0;
     }
     // Hide the node.
-    node.style.transform = 'matrix(1, 0, 0, 1, -10000, -10000)';
+    node.style.display = 'none';
     this._pool.push(node.dataset.poolId, node);
   }
 
@@ -101,7 +94,7 @@ export default class Recycler {
     let updates = 0;
     let node;
     while (
-      updates <= nextIncrement &&
+      updates < nextIncrement &&
       (node = this._popNodeFromPool(from) || this._allocateNode(from))
     ) {
       this._pushToClient(node, from);
@@ -169,7 +162,9 @@ export default class Recycler {
     }
     const node = Recycler.START ? this._pool.shift(poolId) : this._pool.pop(poolId);
     if (node) {
-      const metaForNode = Object.assign(metas.get(node) || {}, this.initMetaForIndex(idx));
+      const metaForNode = metas.hasIndex(idx) ?
+          metas.getByIndex(idx) :
+          metas.setByIndex(Object.assign({ idx: idx }, this.initMetaForIndex(idx)));
       metas.set(node, metaForNode);
       this.nodeForIndex(idx, node, metaForNode);
     }
@@ -193,12 +188,12 @@ export default class Recycler {
     if (idx < 0 || idx >= this.size()) {
       return;
     }
-
     const node = this.createNodeContainer();
-    const metaForNode = this.initMetaForIndex(idx);
-
     invariant(node.dataset && node.style, 'invalid node container');
     node.dataset.poolId = this.poolIdForIndex(idx);
+    const metaForNode = metas.hasIndex(idx) ?
+        metas.getByIndex(idx) :
+        metas.setByIndex(Object.assign({ idx: idx }, this.initMetaForIndex(idx)));
     metas.set(node, metaForNode);
     this.nodeForIndex(idx, node, metaForNode);
     return node;
@@ -262,6 +257,10 @@ export default class Recycler {
 
   get endMeta() {
     return this._pool.meta.get(this.endNode) || {};
+  }
+
+  get pool() {
+    return this._pool;
   }
 
   static get START() {

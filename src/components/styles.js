@@ -33,7 +33,6 @@ export const styleItemContainerHorizontal = `
   top: 0;
   left: 0;
   bottom: 0;
-  will-change: transform;
 `;
 
 export const styleItemContainerTopVertical = `
@@ -41,7 +40,6 @@ export const styleItemContainerTopVertical = `
   top: 0;
   left: 0;
   right: 0;
-  will-change: transform;
 `;
 
 export const styleItemContainerBottomVertical = `
@@ -49,5 +47,4 @@ export const styleItemContainerBottomVertical = `
   bottom: 0;
   left: 0;
   right: 0;
-  will-change: transform;
 `;

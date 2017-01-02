@@ -37,16 +37,15 @@ export default class LayoutVertical extends HTMLElement {
   }
 
   async connectedCallback() {
-    this._recycler.mount();
     await forBeforePaint();
     if (!this.scrollingElement) {
       this.scrollingElement = document.scrollingElement;
     }
+    this._recycler.enqueuePrerendered();
     await this.refresh();
   }
 
   disconnectedCallback() {
-    this._recycler.unmount();
   }
 
   set poolIdForCell(fn) {
@@ -125,11 +124,11 @@ export default class LayoutVertical extends HTMLElement {
 
   _initIndex() {
     const itemHeightMean = this._sumHeights/this._sumNodes;
-    return ~~(this._top/itemHeightMean);
+    return this._sumNodes == 0 ? 0 : ~~(this._top/itemHeightMean);
   }
 
   _initMetaForIndex(idx) {
-    return { idx: idx, h: 0, y: this._top };
+    return { idx: idx, h: 0, y: this._sumNodes == 0 ? 0 : this._top };
   }
 
   _shouldRecycle(node, meta) {
@@ -141,7 +140,8 @@ export default class LayoutVertical extends HTMLElement {
     if (node.style.position != 'absolute') {
       node.style.cssText = styleItemContainerTopVertical;
     }
-    node.style.transform = `matrix(1, 0, 0, 1, 0, ${meta.y})`;
+    node.style.display = 'block';
+    node.style.top = `${meta.y}px`;
   }
 
   _makeActive(node, meta, nodes, metas, idx, from) {

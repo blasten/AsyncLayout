@@ -4,23 +4,21 @@ import {
 import {
   styleLayoutVertical,
   styleItemContainerTopVertical,
-  styleItemContainerHorizontal 
+  styleItemContainerHorizontal
 } from './styles';
 import {
   setProps,
-  vdom, 
+  vnode,
   getApproxSize,
-  eventTarget, 
-  checkThreshold, 
-  getRowOffset, 
-  getColumnOffset, 
-  shouldRecycleRow, 
-  shouldRecycleColumn, 
+  eventTarget,
+  checkThreshold,
+  getRowOffset,
+  getColumnOffset,
+  shouldRecycleRow,
+  shouldRecycleColumn,
 } from '../utils';
 import Recycler from '../Recycler';
 import DomPool from '../DomPool';
-
-const ROW_HOOK = {};
 
 export default class LayoutTable extends HTMLElement {
   constructor() {
@@ -29,6 +27,7 @@ export default class LayoutTable extends HTMLElement {
     this._props = {};
     this._renderedWidth = 0;
     this._renderedHeight = 0;
+    this._columnOffsets = {};
     this._numberOfRenderedColumns = 0;
     this._numberOfRenderedRows = 0;
     this._scrollDidUpdate = this._scrollDidUpdate.bind(this);
@@ -40,7 +39,8 @@ export default class LayoutTable extends HTMLElement {
     this._layoutCell = this._layoutCell.bind(this);
     this._makeCellActive = this._makeCellActive.bind(this);
     this._cellForIndex = this._cellForIndex.bind(this);
-    // Create recyler contexts.
+    this._initIndexForCell = this._initIndexForCell.bind(this);
+    // Create recyler context.
     const r = new Recycler(null, new DomPool());
     r.initMetaForIndex = this._initMetaForRowAtIndex.bind(this);
     r.shouldRecycle = this._shouldRecycleRow.bind(this);
@@ -49,7 +49,8 @@ export default class LayoutTable extends HTMLElement {
     r.layout = this._layoutRow.bind(this);
     r.makeActive = this._makeRowActive.bind(this);
     r.nodeForIndex = this._rowForIndex.bind(this);
-    r.createNodeContainer = _ => vdom();
+    r.initIndex = this._initIndexForRow.bind(this);
+    r.createNodeContainer = _ => vnode();
     r.poolIdForIndex = _ => 0;
     r.size = _ => this.numberOfRows;
     this._rowRecycler = r;
@@ -66,7 +67,6 @@ export default class LayoutTable extends HTMLElement {
   }
 
   async connectedCallback() {
-    this._rowRecycler.mount();
     await forBeforePaint();
     if (!this.scrollingElement) {
       this.scrollingElement = document.scrollingElement;
@@ -75,7 +75,6 @@ export default class LayoutTable extends HTMLElement {
   }
 
   disconnectedCallback() {
-    this._rowRecycler.unmount();
   }
 
   set poolIdForCell(fn) {
@@ -151,39 +150,53 @@ export default class LayoutTable extends HTMLElement {
     this.refresh();
   }
 
-  async refresh() {
+  refresh() {
+    const top = this._top;
+    const left = this._left;
+    const rowRecycler = this._rowRecycler;
+    const rowPool = this._rowRecycler.pool;
+
     this._top = this.scrollingElement.scrollTop;
     this._left = this.scrollingElement.scrollLeft;
     this._clientWidth = this.scrollingElement.clientWidth;
     this._clientHeight = this.scrollingElement.clientHeight;
 
-    await this._rowRecycler.recycle();
-    let rowRecycler = this._rowRecycler;
-    let recyclers = rowRecycler._nodes.map(node => rowRecycler._pool.meta.get(node).recycler.recycle(), this);
-    await Promise.all(recyclers);
+    if (this._top != top) {
+      this._rowRecycler.recycle();
+      rowPool.getById(0).forEach(node => node.recycler.enqueueRendered());
+    }
+    if (this._left != left) {
+      rowRecycler._nodes.map(node => node.recycler.recycle());
+    }
     this.style.width = `${this._contentWidth}px`;
     this.style.height = `${this._contentHeight}px`;
   }
 
   _rowForIndex(idx, node, meta) {
-    if (meta.recycler == null) {
-      meta.recycler = new Recycler(this, this._poolForCells);
-      meta.recycler.initMetaForIndex = this._initMetaForCellAtIndex;
-      meta.recycler.shouldRecycle = this._shouldRecycleCell;
-      meta.recycler.isClientFull = this._isClientFullCell;
-      meta.recycler.hasEnoughContent = this._hasEnoughCell;
-      meta.recycler.makeActive = this._makeCellActive;
-      meta.recycler.nodeForIndex = this._cellForIndex;
-      meta.recycler.poolIdForIndex = idx => this.poolIdForCell(idx);
-      meta.recycler.size = _ => this.numberOfColumns;
-      meta.recycler.createNodeContainer = _ => document.createElement('div');
+    if (node.recycler == null) {
+      node.recycler = new Recycler(this, this._poolForCells);
+      node.recycler.initMetaForIndex = this._initMetaForCellAtIndex;
+      node.recycler.shouldRecycle = this._shouldRecycleCell;
+      node.recycler.isClientFull = this._isClientFullCell;
+      node.recycler.hasEnoughContent = this._hasEnoughCell;
+      node.recycler.makeActive = this._makeCellActive;
+      node.recycler.initIndex = this._initIndexForCell;
+      node.recycler.poolIdForIndex = idx => this.poolIdForCell(idx);
+      node.recycler.size = _ => this.numberOfColumns;
+      node.recycler.createNodeContainer = _ => document.createElement('div');
     }
-    meta.recycler.layout = this._layoutCell.bind(null, meta);
-    meta.recycler.mount();
+    node.recycler.nodeForIndex = this._cellForIndex.bind(null, meta);
+    node.recycler.layout = this._layoutCell.bind(null, meta);
+    node.recycler.enqueueRendered();
+  }
+
+  _initIndexForRow() {
+    const itemHeightMean = this._renderedHeight/this._numberOfRenderedRows;
+    return isNaN(itemHeightMean) ? 0 : ~~(this._top/itemHeightMean);
   }
 
   _initMetaForRowAtIndex(idx) {
-    return { idx: idx, h: 0, y: 0 };
+    return { idx: idx, h: 0, y: this._numberOfRenderedRows == 0 ? 0 : this._top };
   }
 
   _shouldRecycleRow(node, meta) {
@@ -201,7 +214,7 @@ export default class LayoutTable extends HTMLElement {
   }
 
   _layoutRow(node, meta) {
-    meta.recycler.recycleAll();
+    node.recycler.recycle();
   }
 
   _makeRowActive(node, meta, nodes, metas, idx, from) {
@@ -211,8 +224,13 @@ export default class LayoutTable extends HTMLElement {
     this._numberOfRenderedRows += 1;
   }
 
+  _initIndexForCell() {
+    const itemWidthMean = this._renderedWidth/this._numberOfRenderedColumns;
+    return this._numberOfRenderedColumns == 0 ? 0 : ~~(this._left/itemWidthMean);
+  }
+
   _initMetaForCellAtIndex(idx) {
-    return { idx: idx, w: 0, x: 0, y: 0 };
+    return { w: 0, x: this._left };
   }
 
   _shouldRecycleCell(node, meta) {
@@ -233,18 +251,22 @@ export default class LayoutTable extends HTMLElement {
     if (node.style.position != 'absolute') {
       node.style.cssText = styleItemContainerHorizontal;
     }
-    node.style.transform = `matrix(1, 0, 0, 1, ${meta.x}, ${rowMeta.y})`;
+    node.style.display = 'block';
+    node.style.top = `${rowMeta.y}px`;
+    node.style.left = `${meta.x}px`;
   }
 
   _makeCellActive(node, meta, nodes, metas, idx, from) {
-    meta.w = this.widthForColumn(meta.idx, node);
+    meta.w = this.widthForColumn(meta.idx);
     meta.x = getColumnOffset(meta, idx, from, nodes, metas);
+
+    this._startCellMeta = metas.get(nodes[0]);
     this._renderedWidth += meta.w;
     this._numberOfRenderedColumns += 1;
   }
 
-  _cellForIndex(idx, node, meta) {
-    return this.domForCell(idx, node);
+  _cellForIndex(rowMeta, idx, node, meta) {
+    return this.domForCell(rowMeta.idx, idx, node);
   }
 }
 
