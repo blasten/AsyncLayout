@@ -8,13 +8,8 @@ export function getApproxSize(renderedSize, renderedNumber, totalNumber) {
   return renderedSize + (totalNumber - renderedNumber) * (renderedSize / renderedNumber);
 }
 
-export function eventTarget(se) {
-  const d = document;
-  return se === d.body || se === d.documentElement || !(se instanceof HTMLElement) ? window : se;
-}
-
-export function checkThreshold(start, end, dist, offset, size, from) {
-  return from == Recycler.START ? (start <= offset - dist) : (end >= offset + size + dist);
+export function checkThreshold(start, end, offset, size, from, oversee) {
+  return from == Recycler.START ? (start <= offset - oversee) : (end >= offset + size + oversee);
 }
 
 export function getRowOffset(meta, idx, from, nodes, metas) {
@@ -66,5 +61,22 @@ export function vnode() {
 export function invariant(condition, errorMsg) {
   if (!condition) {
     throw new Error(errorMsg);
+  }
+}
+
+export function eventTarget(se) {
+  const d = document;
+  return se === d.body || se === d.documentElement || !(se instanceof HTMLElement) ? window : se;
+}
+
+export function getScrollTop(scrollingElement) {
+  return scrollingElement === window ? window.pageYOffset : scrollingElement.scrollTop;
+}
+
+export function setScrollTop(scrollingElement, top) {
+  if (scrollingElement === window) {
+    window.scrollTo(0, top);
+  } else {
+    scrollingElement.scrollTop = top;
   }
 }

@@ -1,5 +1,5 @@
-import { forIdleTime, forBeforePaint } from './Async';
-import { invariant, clamp } from './utils';
+import { forIdleTime } from './Async';
+import { clamp, invariant } from './utils';
 import DomPool from './DomPool';
 
 export default class Recycler {
@@ -94,8 +94,7 @@ export default class Recycler {
     let updates = 0;
     let node;
     while (
-      updates < nextIncrement &&
-      (node = this._popNodeFromPool(from) || this._allocateNode(from))
+      updates < nextIncrement && (node = this._getNode(from))
     ) {
       this._pushToClient(node, from);
       updates++;
@@ -143,41 +142,16 @@ export default class Recycler {
     }
   }
 
-  _popNodeFromPool(from) {
-    let idx, poolId;
+  _getNode(from) {
+    let idx, metaForNode, node, poolId;
     const nodes = this._nodes;
     const metas = this._pool.meta;
 
-    if (nodes.length === 0) {
-      idx = this.initIndex();
-      poolId = this.poolIdForIndex(idx);
+    if (this.size() == 0) {
+      return null;
     }
-    else if (from == Recycler.START) {
-      idx = metas.get(this.startNode).idx - 1;
-      poolId = idx >= 0 ? this.poolIdForIndex(idx) : null;
-    }
-    else {
-      idx = metas.get(this.endNode).idx + 1;
-      poolId = idx < this.size() ? this.poolIdForIndex(idx) : null;
-    }
-    const node = Recycler.START ? this._pool.shift(poolId) : this._pool.pop(poolId);
-    if (node) {
-      const metaForNode = metas.hasIndex(idx) ?
-          metas.getByIndex(idx) :
-          metas.setByIndex(Object.assign({ idx: idx }, this.initMetaForIndex(idx)));
-      metas.set(node, metaForNode);
-      this.nodeForIndex(idx, node, metaForNode);
-    }
-    return node;
-  }
-
-  _allocateNode(from) {
-    let idx;
-    const nodes = this._nodes;
-    const metas = this._pool.meta;
-
     if (nodes.length == 0) {
-      idx = this.initIndex();
+      idx = 0;
     }
     else if (from == Recycler.START) {
       idx = metas.get(this.startNode).idx - 1;
@@ -186,16 +160,22 @@ export default class Recycler {
       idx = metas.get(this.endNode).idx + 1;
     }
     if (idx < 0 || idx >= this.size()) {
-      return;
+      return null;
     }
-    const node = this.createNodeContainer();
+
+    metaForNode = this.initMetaForIndex(metas.getByIndex(idx) || { idx: idx });
+    invariant(metaForNode.idx != null, 'meta should contain an index');
+    poolId = this.poolIdForIndex(metaForNode.idx);
+    node = Recycler.START ? this._pool.shift(poolId) : this._pool.pop(poolId);
+    if (!node) {
+      node = this.createNodeContainer();
+    }
     invariant(node.dataset && node.style, 'invalid node container');
-    node.dataset.poolId = this.poolIdForIndex(idx);
-    const metaForNode = metas.hasIndex(idx) ?
-        metas.getByIndex(idx) :
-        metas.setByIndex(Object.assign({ idx: idx }, this.initMetaForIndex(idx)));
+    metas.setByIndex(metaForNode);
     metas.set(node, metaForNode);
-    this.nodeForIndex(idx, node, metaForNode);
+    node.dataset.poolId = poolId;
+    this.nodeForIndex(metaForNode.idx, node, metaForNode);
+    node.style.display = 'block';
     return node;
   }
 

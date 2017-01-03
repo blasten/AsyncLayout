@@ -1,201 +1,298 @@
-import { forBeforePaint } from '../Async';
-import { styleLayoutVertical } from './styles';
+import {
+  forBeforePaint
+} from '../Async';
+import {
+  styleLayoutVertical,
+  styleItemContainerTopVertical,
+  styleItemContainerHorizontal
+} from './styles';
+import {
+  clamp,
+  setProps,
+  vnode,
+  getApproxSize,
+  eventTarget,
+  checkThreshold,
+  getRowOffset,
+  getColumnOffset,
+  shouldRecycleRow,
+  shouldRecycleColumn,
+} from '../utils';
 import Recycler from '../Recycler';
 import DomPool from '../DomPool';
 
 export default class LayoutGrid extends HTMLElement {
   constructor() {
     super();
-    const root = this.attachShadow({ mode: 'open' });
-    root.innerHTML = this._getTemplate();
-    this._$scrollingElement = root.getElementById('scrollingElement');
-    this._$parentContainer = root.getElementById('parentContainer');
+    this.style.cssText = styleLayoutVertical;
     this._props = {};
-    this._sumHeights = 0;
-    this._sumNodes = 0;
+    this._renderedWidth = 0;
+    this._renderedHeight = 0;
+    this._columnOffsets = {};
+    this._numberOfRenderedColumns = 0;
+    this._numberOfRenderedRows = 0;
     this._scrollDidUpdate = this._scrollDidUpdate.bind(this);
+    this._poolForCells = new DomPool();
+    this._initMetaForCellAtIndex = this._initMetaForCellAtIndex.bind(this);
+    this._shouldRecycleCell = this._shouldRecycleCell.bind(this);
+    this._isClientFullCell = this._isClientFullCell.bind(this);
+    this._hasEnoughCell = this._hasEnoughCell.bind(this);
+    this._layoutCell = this._layoutCell.bind(this);
+    this._makeCellActive = this._makeCellActive.bind(this);
+    this._cellForIndex = this._cellForIndex.bind(this);
     // Create recyler context.
-    const recycler = new Recycler();
-    // Set the DOM pool for the context.
-    recycler.pool = new DomPool();
-    recycler.parentContainer = this;
-    recycler.initMetaForIndex = this._initMetaForIndex;
-    recycler.shouldRecycle = this._shouldRecycle.bind(this);
-    recycler.isClientFull = this._isClientFull.bind(this);
-    recycler.hasEnoughContent = this._hasEnoughContent.bind(this);
-    recycler.poolIdForIndex = this._poolIdForIndex.bind(this);
-    recycler.layout = this._layout.bind(this);
-    recycler.makeActive = this._makeActive.bind(this);
-    this._recycler = recycler;
-    this._setProps(['numberOfRows', 'domForRow', 'heightForRow', 'scrollingElement']);
+    const r = new Recycler(null, new DomPool());
+    r.initMetaForIndex = this._initMetaForRowAtIndex.bind(this);
+    r.shouldRecycle = this._shouldRecycleRow.bind(this);
+    r.isClientFull = this._isClientFullRows.bind(this);
+    r.hasEnoughContent = this._hasEnoughRows.bind(this);
+    r.layout = this._layoutRow.bind(this);
+    r.makeActive = this._makeRowActive.bind(this);
+    r.nodeForIndex = this._rowForIndex.bind(this);
+    r.createNodeContainer = _ => vnode();
+    r.poolIdForIndex = _ => 0;
+    r.size = _ => this.numberOfRows;
+    this._rowRecycler = r;
+
+    setProps(this, [
+      'poolIdForCell',
+      'domForCell',
+      'numberOfColumns',
+      'numberOfRows',
+      'widthForCell',
+      'heightForRow',
+      'scrollingElement'
+    ]);
   }
 
-  set poolIdForRow(fn) {
-    this._recycler.poolIdForIndex = fn;
+  async connectedCallback() {
+    await forBeforePaint();
+    if (!this.scrollingElement) {
+      this.scrollingElement = document.scrollingElement;
+    }
+    this.refresh();
   }
 
-  get poolIdForIndex() {
-    return this._recycler.poolIdForIndex;
+  disconnectedCallback() {
   }
 
-  set domForRow(fn) {
-    this._props.domForRow = fn;
-    this._recycler.nodeForIndex = (idx, container) => {
-      fn(idx, container);
-    };
+  set poolIdForCell(fn) {
+    this._props.poolIdForCell = fn;
   }
 
-  get domForRow() {
-    return this._props.domForRow;
+  get poolIdForCell() {
+    return this._props.poolIdForCell || (_ => 0);
+  }
+
+  set domForCell(fn) {
+    this._props.domForCell = fn;
+  }
+
+  get domForCell() {
+    return this._props.domForCell;
+  }
+
+  set numberOfColumns(size) {
+    this._props.numberOfColumns = size;
+  }
+
+  get numberOfColumns() {
+    return this._props.numberOfColumns || 0;
   }
 
   set numberOfRows(size) {
-    this._recycler.size = size;
+    this._props.numberOfRows = size;
   }
 
   get numberOfRows() {
-    return this._recycler.size;
+    return this._props.numberOfRows || 0;
   }
 
-  get heightForRow() {
-    return this._props.heightForRow;
+  set widthForCell(fn) {
+    this._props.widthForCell = fn;
+  }
+
+  get widthForCell() {
+    return this._props.widthForCell || ((idx, node) => node.getBoundingClientRect().width);
   }
 
   set heightForRow(fn) {
     this._props.heightForRow = fn;
   }
 
-  get scrollingElement() {
-    return this._props.scrollingElement || this;
+  get heightForRow() {
+    return this._props.heightForRow || ((idx, node) => 50);
   }
 
   set scrollingElement(se) {
-    if (this._props.scrollingElement) {
-      this._eventTarget(this._props.scrollingElement)
+    if (this._props.$scrollingElement) {
+      eventTarget(this._props.$scrollingElement)
           .removeEventListener('scroll', this._scrollDidUpdate);
     }
-    this._props.scrollingElement = se;
-    this._$scrollingElement.style.cssText = se === this ? styles.yScrollable : '';
-    window.addEventListener('scroll', this._scrollDidUpdate);
+    this._props.$scrollingElement = se;
+    eventTarget(se).addEventListener('scroll', this._scrollDidUpdate);
+  }
+
+  get scrollingElement() {
+    return this._props.$scrollingElement;
+  }
+
+  get _contentWidth() {
+    return getApproxSize(this._renderedWidth, this._numberOfRenderedColumns, this.numberOfColumns);
   }
 
   get _contentHeight() {
-    return this._sumHeights + (this.numberOfRows - this._sumNodes) * (this._sumHeights / this._sumNodes);
+    return getApproxSize(this._renderedHeight, this._numberOfRenderedRows, this.numberOfRows);
   }
 
-  _eventTarget(se) {
-    const d = document;
-    return se === d.body || se === d.documentElement || !(se instanceof HTMLElement) ? null : se;
+  get _medianRowHeight() {
+    return this._renderedHeight/this._numberOfRenderedRows || 0;
   }
 
-  async connectedCallback() {
-    this._recycler.mount();
-    await forBeforePaint();
-    this.refresh();
-  }
-
-  disconnectedCallback() {
-    this._recycler.unmount();
+  get _medianColumnHeight() {
+    return this._renderedWidth/this._numberOfRenderedColumns || 0;
   }
 
   _scrollDidUpdate() {
     this.refresh();
   }
 
-  async refresh() {
+  refresh() {
+    const top = this._top;
+    const left = this._left;
+    const rowRecycler = this._rowRecycler;
+    const rowPool = this._rowRecycler.pool;
+
     this._top = this.scrollingElement.scrollTop;
+    this._left = this.scrollingElement.scrollLeft;
+    this._clientWidth = this.scrollingElement.clientWidth;
     this._clientHeight = this.scrollingElement.clientHeight;
-    await this._recycler.recycle();
-    this._$parentContainer.style.height = `${this._contentHeight}px`;
-  }
 
-  _checkThresholds(dist, nodes, metas, from) {
-    if (nodes.length == 0) {
-      return false;
+    if (this._top != top) {
+      this._rowRecycler.recycle();
+      rowPool.getById(0).forEach(node => node.recycler.enqueueRendered());
     }
-    if (from == Recycler.START) {
-      return metas.get(this._recycler.startNode).y <= this._top - dist;
+    if (this._left != left) {
+      rowRecycler._nodes.map(node => node.recycler.recycle());
     }
-    return metas.get(this._recycler.endNode).y >= this._top + this._clientHeight + dist;
+    this.style.width = `${this._contentWidth}px`;
+    this.style.height = `${this._contentHeight}px`;
   }
 
-  _isClientFull(nodes, metas, from) {
-    return this._checkThresholds(0, nodes, metas, from);
+  _rowForIndex(idx, node, meta) {
+    if (node.recycler == null) {
+      node.recycler = new Recycler(this, this._poolForCells);
+      node.recycler.initMetaForIndex = this._initMetaForCellAtIndex;
+      node.recycler.shouldRecycle = this._shouldRecycleCell;
+      node.recycler.isClientFull = this._isClientFullCell;
+      node.recycler.hasEnoughContent = this._hasEnoughCell;
+      node.recycler.makeActive = this._makeCellActive;
+      node.recycler.poolIdForIndex = idx => this.poolIdForCell(idx);
+      node.recycler.size = _ => this.numberOfColumns;
+      node.recycler.createNodeContainer = _ => document.createElement('div');
+    }
+    node.recycler.nodeForIndex = this._cellForIndex.bind(null, meta);
+    node.recycler.layout = this._layoutCell.bind(null, meta);
+    node.recycler.enqueueRendered();
   }
 
-  _hasEnoughContent(nodes, metas, from) {
-    return this._checkThresholds(this._clientHeight/2, nodes, metas, from);
-  }
-
-  _poolIdForIndex(idx) {
-    return 0;
-  }
-
-  _initMetaForIndex(idx) {
+  _initMetaForRowAtIndex(prevState) {
+    if (prevState.idx != 0) {
+      // Reuse the same state.
+      return prevState;
+    }
+    let startMeta = this._startRowMeta;
+    if (!startMeta) {
+      return { idx: 0, h: 0, y: 0 };
+    }
+    if (this._top > 0 && !this._shouldRecycleRow(null, startMeta)) {
+      return startMeta;
+    }
     return {
-      idx: idx,
+      idx: clamp(~~(this._top/this._medianRowHeight), 0, this.numberOfRows-1),
       h: 0,
-      y: 0
+      y: this._top
     };
   }
 
-  _shouldRecycle(node, meta) {
-    return meta.y + meta.h < this._top - this._clientHeight/2 ||
-        meta.y > this._top + this._clientHeight*1.5;
+  _shouldRecycleRow(node, meta) {
+    return shouldRecycleRow(node, meta, this._top, this._clientHeight);
   }
 
-  _layout(node, meta) {
-    // Set initial styles.
+  _isClientFullRows(startMeta, endMeta, from) {
+    return checkThreshold(startMeta.y, endMeta.y, this._top,
+        this._clientHeight, from, 0);
+  }
+
+  _hasEnoughRows(startMeta, endMeta, from) {
+    return checkThreshold(startMeta.y, endMeta.y, this._top,
+        this._clientHeight, from, this._clientHeight/2);
+  }
+
+  _layoutRow(node, meta) {
+    node.recycler.recycle();
+  }
+
+  _makeRowActive(node, meta, nodes, metas, idx, from) {
+    meta.h = this.heightForRow(meta.idx, node);
+    meta.y = getRowOffset(meta, idx, from, nodes, metas);
+    this._renderedHeight += meta.h;
+    this._numberOfRenderedRows += 1;
+    this._startRowMeta = metas.get(nodes[0]);
+  }
+
+  _initMetaForCellAtIndex(prevState) {
+    if (prevState.idx != 0) {
+      // Reuse the same state.
+      return prevState;
+    }
+    let startMeta = this._startColumnMeta;
+    if (!startMeta) {
+      return { idx: 0, w: 0, x: 0 };
+    }
+    if (this._left > 0 && !this._shouldRecycleCell(null, startMeta)) {
+      return startMeta;
+    }
+    return {
+      idx: clamp(~~(this._left/this._medianColumnHeight), 0, this.numberOfColumns-1),
+      w: 0,
+      x: this._left
+    };
+  }
+
+  _shouldRecycleCell(node, meta) {
+    return shouldRecycleColumn(node, meta, this._left, this._clientWidth);
+  }
+
+  _isClientFullCell(startMeta, endMeta, from) {
+    return checkThreshold(startMeta.x, endMeta.x, this._left,
+        this._clientWidth, from, 0);
+  }
+
+  _hasEnoughCell(startMeta, endMeta, from) {
+    return checkThreshold(startMeta.x, endMeta.x, this._left,
+        this._clientWidth, from, this._clientWidth/2);
+  }
+
+  _layoutCell(rowMeta, node, meta, nodes, metas) {
     if (node.style.position != 'absolute') {
-      node.style.position = 'absolute';
-      node.style.top = '0px';
-      node.style.willChange = 'transform';
+      node.style.cssText = styleItemContainerHorizontal;
     }
-    node.style.transform = `matrix(1, 0, 0, 1, 0, ${meta.y})`;
+    node.style.top = `${rowMeta.y}px`;
+    node.style.left = `${meta.x}px`;
   }
 
-  _makeActive(node, meta, idx, from, nodes, metas) {
-    meta.h = this._props.heightForRow ?
-        this._props.heightForRow(meta.idx, node) : node.offsetHeight;
-    // Keep track of the heights to estimate the mean.
-    this._sumHeights = this._sumHeights + meta.h;
-    this._sumNodes = this._sumNodes + 1;
+  _makeCellActive(node, meta, nodes, metas, idx, from) {
+    meta.w = this.widthForColumn(meta.idx);
+    meta.x = getColumnOffset(meta, idx, from, nodes, metas);
 
-    if (from == Recycler.START && idx + 1 < nodes.length) {
-      let nextM = metas.get(nodes[idx + 1]);
-      meta.y = nextM.y - meta.h;
-    }
-    else if (from == Recycler.END && idx > 0) {
-      let prevM = metas.get(nodes[idx - 1]);
-      meta.y = prevM.y + prevM.h;
-    }
-    else {
-      meta.y = 0;
-    }
+    this._renderedWidth += meta.w;
+    this._numberOfRenderedColumns += 1;
+    this._startColumnMeta = metas.get(nodes[0]);
   }
 
-  _getTemplate() {
-    return `
-      <style>
-        :host {
-          display: block;
-        }
-      </style>
-      <div id="scrollingElement" style="${styles.xScrollable}">
-        <div id="parentContainer" style="${styles.parentContainer}">
-          <slot></slot>
-        </div>
-      </div>`;
-  }
-
-  _setProps(props) {
-    props.forEach((prop) => {
-      if (this.hasOwnProperty(prop)) {
-        let propVal = this[prop];
-        delete this[prop];
-        this[prop] = propVal;
-      }
-    });
+  _cellForIndex(rowMeta, idx, node, meta) {
+    return this.domForCell(rowMeta.idx, idx, node);
   }
 }
 

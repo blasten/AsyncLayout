@@ -5,46 +5,43 @@
   <link rel="stylesheet" href="../dist/layout.css">
   <style>
     .item {
-      width: 100px;
       height: 50px;
     }
 
-    layout-table {
-      width: 1000000px;
+    layout-vertical {
       height: 500000px;
     }
   </style>
 </head>
 <body>
-
-  <layout-table>
-  </layout-table>
+  
+  <layout-vertical></layout-vertical>
 
   <script>
     (function(list) {
 
       list.scrollingElement = document.scrollingElement;
 
-      list.numberOfRows = 1000;
-      list.numberOfColumns = 1000;
 
-      list.widthForColumn = (idx, container) => {
-        return 100;
-      };
+      window.scrollTo(0, 500000);
 
-      list.heightForRow = (idx, container) => {
+      list.bottom = true;
+
+      list.numberOfCells = 10000;
+      list.heightForCell = (idx, container) => {
         return 50;
       };
-      list.domForCell = (row, column, container) => {
+      list.domForCell = (idx, container) => {
+
         container.classList.add('item');
-        container.innerText = `${row}x${column}`;
+        container.innerText = `Item ${idx}`;
       };
 
       list.shouldHeaderStick = (idx) => {
         return false;
       };
 
-    })(document.querySelector('layout-table'));
+    })(document.querySelector('layout-vertical'));
   </script>
 
   <script src="../dist/Layout.js" async></script>

@@ -1,6 +1,6 @@
 import { styleLayoutHorizontal, styleItemContainerHorizontal } from './styles';
 import { forBeforePaint } from '../Async';
-import { eventTarget, checkThreshold, setProps, getColumnOffset, getApproxSize } from '../utils'
+import { clamp, getApproxSize, eventTarget, checkThreshold, setProps, getColumnOffset } from '../utils';
 import Recycler from '../Recycler';
 import DomPool from '../DomPool';
 
@@ -97,6 +97,10 @@ export default class LayoutHorizontal extends HTMLElement {
     return getApproxSize(this._sumWidths, this._sumNodes, this.numberOfCells);
   }
 
+  get _medianWidth() {
+    return this._sumWidths/this._sumNodes || 0;
+  }
+
   _scrollDidUpdate() {
     this.refresh();
   }
@@ -109,21 +113,22 @@ export default class LayoutHorizontal extends HTMLElement {
   }
 
   _isClientFull(startMeta, endMeta, from) {
-    return checkThreshold(startMeta.x, endMeta.x, 0, this._left,
-        this._clientWidth, from);
+    return checkThreshold(startMeta.x, endMeta.x, this._left,
+        this._clientWidth, from, 0);
   }
 
   _hasEnoughContent(startMeta, endMeta, from) {
-    return checkThreshold(startMeta.x, endMeta.x, this._clientWidth/2,
-        this._left, this._clientWidth, from);
+    return checkThreshold(startMeta.x, endMeta.x, this._left,
+        this._clientWidth, from, this._clientWidth/2);
   }
 
   _poolIdForIndex(idx) {
     return this.poolIdForCell(idx);
   }
 
-  _initMetaForIndex(idx) {
-    return { idx: idx, w: 0, x: 0 };
+  _initIndex() {
+    const itemWidthMean = this._sumWidths/this._sumNodes;
+    return this._sumNodes == 0 ? 0 : ~~(this._left/itemWidthMean);
   }
 
   _shouldRecycle(node, meta) {
@@ -131,11 +136,30 @@ export default class LayoutHorizontal extends HTMLElement {
         meta.x > this._left + this._clientWidth*1.5;
   }
 
+  _initMetaForIndex(prevState) {
+    if (prevState.idx != 0) {
+      // Reuse the same state.
+      return prevState;
+    }
+    let startMeta = this._startMeta;
+    if (!startMeta) {
+      return { idx: 0, w: 0, x: 0 };
+    }
+    if (this._left > 0 && !this._shouldRecycle(null, startMeta))  {
+      return startMeta;
+    }
+    return {
+      idx: clamp(~~(this._left/this._medianWidth), 0, this.numberOfCells-1),
+      w: 0,
+      x: this._left
+    };
+  }
+
   _layout(node, meta) {
     if (node.style.position != 'absolute') {
       node.style.cssText = styleItemContainerHorizontal;
     }
-    node.style.transform = `matrix(1, 0, 0, 1, ${meta.x}, 0)`;
+    node.style.left = `${meta.x}px`;
   }
 
   _makeActive(node, meta, nodes, metas, idx, from) {
@@ -144,6 +168,7 @@ export default class LayoutHorizontal extends HTMLElement {
     // Keep track of the widths to estimate the mean.
     this._sumWidths = this._sumWidths + meta.w;
     this._sumNodes = this._sumNodes + 1;
+    this._startMeta = metas.get(nodes[0]);
   }
 
   _nodeForIndex(idx, container) {

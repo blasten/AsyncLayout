@@ -5,7 +5,8 @@
   <link rel="stylesheet" href="../dist/layout.css">
   <style>
     .item {
-      height: 50px;
+      padding: 10px;
+      border-bottom: 1px solid #ccc;
     }
 
     layout-vertical {
@@ -40,21 +41,30 @@
 
   <script>
     (function(list) {
+      let data;
+
+      fetch('data.json')
+        .then(d => d.json())
+        .then(json => {
+          data = json;
+          list.numberOfCells = data.length;
+          list.refresh();
+      });
 
       list.scrollingElement = document.scrollingElement;
 
-      list.numberOfCells = 10000;
       list.heightForCell = (idx, container) => {
-        return 50;
+        return container.offsetHeight;  
       };
       list.domForCell = (idx, container) => {
-        
-        container.classList.add('item');
-        container.innerText = `Item ${idx}`;
-      };
-
-      list.shouldHeaderStick = (idx) => {
-        return false;
+        if (container.children.length === 0) {
+          container.innerHTML = `<b>${data[idx].index}</b>
+            <div>${data[idx].longText}</div>`;
+          container.classList.add('item');
+        } else {
+          container.children[0].textContent = data[idx].index;
+          container.children[1].textContent = data[idx].longText;
+        }
       };
 
     })(document.querySelector('layout-vertical'));
