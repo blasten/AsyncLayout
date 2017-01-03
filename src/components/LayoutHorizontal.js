@@ -1,8 +1,10 @@
+import { clamp, getApproxSize, eventTarget, checkThreshold, setProps,
+    getColumnOffset } from '../utils';
 import { styleLayoutHorizontal, styleItemContainerHorizontal } from './styles';
 import { forBeforePaint } from '../Async';
-import { clamp, getApproxSize, eventTarget, checkThreshold, setProps, getColumnOffset } from '../utils';
 import Recycler from '../Recycler';
 import DomPool from '../DomPool';
+import MetaStorage from '../MetaStorage';
 
 export default class LayoutHorizontal extends HTMLElement {
   constructor() {
@@ -13,7 +15,7 @@ export default class LayoutHorizontal extends HTMLElement {
     this._sumNodes = 0;
     this._scrollDidUpdate = this._scrollDidUpdate.bind(this);
     // Create recyler context.
-    const r = new Recycler(this, new DomPool());
+    const r = new Recycler(this, new DomPool(), new MetaStorage());
     r.initMetaForIndex = this._initMetaForIndex.bind(this);
     r.shouldRecycle = this._shouldRecycle.bind(this);
     r.isClientFull = this._isClientFull.bind(this);

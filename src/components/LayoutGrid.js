@@ -1,25 +1,11 @@
-import {
-  forBeforePaint
-} from '../Async';
-import {
-  styleLayoutVertical,
-  styleItemContainerTopVertical,
-  styleItemContainerHorizontal
-} from './styles';
-import {
-  clamp,
-  setProps,
-  vnode,
-  getApproxSize,
-  eventTarget,
-  checkThreshold,
-  getRowOffset,
-  getColumnOffset,
-  shouldRecycleRow,
-  shouldRecycleColumn,
-} from '../utils';
+import { clamp, setProps, vnode, getApproxSize, eventTarget, checkThreshold,
+    getRowOffset, getColumnOffset, shouldRecycleRow, shouldRecycleColumn } from '../utils';
+import { forBeforePaint } from '../Async';
+import { styleLayoutVertical, styleItemContainerTopVertical, 
+    styleItemContainerHorizontal } from './styles';
 import Recycler from '../Recycler';
 import DomPool from '../DomPool';
+import MetaStorage from '../MetaStorage';
 
 export default class LayoutGrid extends HTMLElement {
   constructor() {
@@ -32,7 +18,6 @@ export default class LayoutGrid extends HTMLElement {
     this._numberOfRenderedColumns = 0;
     this._numberOfRenderedRows = 0;
     this._scrollDidUpdate = this._scrollDidUpdate.bind(this);
-    this._poolForCells = new DomPool();
     this._initMetaForCellAtIndex = this._initMetaForCellAtIndex.bind(this);
     this._shouldRecycleCell = this._shouldRecycleCell.bind(this);
     this._isClientFullCell = this._isClientFullCell.bind(this);
@@ -41,7 +26,9 @@ export default class LayoutGrid extends HTMLElement {
     this._makeCellActive = this._makeCellActive.bind(this);
     this._cellForIndex = this._cellForIndex.bind(this);
     // Create recyler context.
-    const r = new Recycler(null, new DomPool());
+    this._poolForCells = new DomPool();
+    this._metaForCells = new MetaStorage();
+    const r = new Recycler(null, new DomPool(), new MetaStorage());
     r.initMetaForIndex = this._initMetaForRowAtIndex.bind(this);
     r.shouldRecycle = this._shouldRecycleRow.bind(this);
     r.isClientFull = this._isClientFullRows.bind(this);
@@ -181,7 +168,7 @@ export default class LayoutGrid extends HTMLElement {
 
   _rowForIndex(idx, node, meta) {
     if (node.recycler == null) {
-      node.recycler = new Recycler(this, this._poolForCells);
+      node.recycler = new Recycler(this, this._poolForCells, this._metaForCells);
       node.recycler.initMetaForIndex = this._initMetaForCellAtIndex;
       node.recycler.shouldRecycle = this._shouldRecycleCell;
       node.recycler.isClientFull = this._isClientFullCell;

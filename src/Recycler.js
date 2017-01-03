@@ -1,11 +1,14 @@
 import { forIdleTime } from './Async';
 import { clamp, invariant } from './utils';
 import DomPool from './DomPool';
+import MetaStorage from './MetaStorage';
 
 export default class Recycler {
-  constructor(container, pool) {
+  constructor(container, pool, meta) {
     invariant(pool instanceof DomPool, 'Invalid pool type');
+    invariant(meta instanceof MetaStorage, 'Invalid meta storage');
     this._container = container;
+    this._meta = meta;
     this._size = 0;
     this._pool = pool;
     this._jobId = 0;
@@ -48,7 +51,7 @@ export default class Recycler {
 
   enqueuePrerendered() {
     Array.from(this._container.children)
-      .filter(node => !this._pool.meta.has(node))
+      .filter(node => !this._meta.has(node))
       .forEach(node => this._putInPool(node));
   }
 
@@ -67,12 +70,12 @@ export default class Recycler {
   }
 
   _shouldRecycle(node) {
-    return this.shouldRecycle(node, this._pool.meta.get(node));
+    return this.shouldRecycle(node, this._meta.get(node));
   }
 
   _populateClient(from, nextIncrement) {
     const nodes = this._nodes;
-    const metas = this._pool.meta;
+    const metas = this._meta;
     // Enqueue node available for recycling.
     while (
       from == Recycler.END &&
@@ -145,7 +148,7 @@ export default class Recycler {
   _getNode(from) {
     let idx, metaForNode, node, poolId;
     const nodes = this._nodes;
-    const metas = this._pool.meta;
+    const metas = this._meta;
 
     if (this.size() == 0) {
       return null;
@@ -223,6 +226,10 @@ export default class Recycler {
     return 0;
   }
 
+  get meta() {
+    return this._meta;
+  }
+
   get startNode() {
     return this._nodes[0];
   }
@@ -232,11 +239,11 @@ export default class Recycler {
   }
 
   get startMeta() {
-    return this._pool.meta.get(this.startNode) || {};
+    return this._meta.get(this.startNode) || {};
   }
 
   get endMeta() {
-    return this._pool.meta.get(this.endNode) || {};
+    return this._meta.get(this.endNode) || {};
   }
 
   get pool() {

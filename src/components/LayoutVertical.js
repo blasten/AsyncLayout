@@ -4,6 +4,7 @@ import { styleLayoutVertical, styleItemContainerTopVertical } from './styles';
 import { forBeforePaint } from '../Async';
 import Recycler from '../Recycler';
 import DomPool from '../DomPool';
+import MetaStorage from '../MetaStorage';
 
 export default class LayoutVertical extends HTMLElement {
   constructor() {
@@ -15,7 +16,7 @@ export default class LayoutVertical extends HTMLElement {
     this._scrollDidUpdate = this._scrollDidUpdate.bind(this);
     this._windowDidResize = this._windowDidResize.bind(this);
     // Create recyler context.
-    const r = new Recycler(this, new DomPool());
+    const r = new Recycler(this, new DomPool(), new MetaStorage());
     r.initMetaForIndex = this._initMetaForIndex.bind(this);
     r.shouldRecycle = this._shouldRecycle.bind(this);
     r.isClientFull = this._isClientFull.bind(this);
