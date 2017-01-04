@@ -64,7 +64,6 @@ export default class Recycler {
     if (!node.dataset.poolId) {
       node.dataset.poolId = 0;
     }
-    // Hide the node.
     node.style.display = 'none';
     this._pool.push(node.dataset.poolId, node);
   }
@@ -76,28 +75,28 @@ export default class Recycler {
   _populateClient(from, nextIncrement) {
     const nodes = this._nodes;
     const metas = this._meta;
+    let node, updates = 0;
     // Enqueue node available for recycling.
     while (
       from == Recycler.END &&
-      nodes.length > 0 &&
-      this._shouldRecycle(nodes[0])
+      (node = nodes[0]) &&
+      this._shouldRecycle(node)
     ) {
-      this._putInPool(nodes[0]);
+      this._putInPool(node);
       nodes.shift();
     }
     while (
       from == Recycler.START &&
-      nodes.length > 0 &&
-      this._shouldRecycle(nodes[nodes.length - 1])
+      (node = nodes[nodes.length - 1]) &&
+      this._shouldRecycle(node)
     ) {
-      this._putInPool(nodes[nodes.length - 1]);
+      this._putInPool(node);
       nodes.pop();
     }
     // Dequeue node or allocate a new one.
-    let updates = 0;
-    let node;
     while (
-      updates < nextIncrement && (node = this._getNode(from))
+      updates < nextIncrement &&
+      (node = this._getNode(from))
     ) {
       this._pushToClient(node, from);
       updates++;
@@ -149,25 +148,22 @@ export default class Recycler {
     let idx, metaForNode, node, poolId;
     const nodes = this._nodes;
     const metas = this._meta;
+    const size = this.size();
 
-    if (this.size() == 0) {
+    if (size == 0) {
       return null;
     }
     if (nodes.length == 0) {
-      idx = 0;
-    }
-    else if (from == Recycler.START) {
-      idx = metas.get(this.startNode).idx - 1;
+      idx = Recycler.UNKNOWN_INDEX;
     }
     else {
-      idx = metas.get(this.endNode).idx + 1;
+      idx = from == Recycler.START ? this.startMeta.idx - 1 : this.endMeta.idx + 1;
+      if (idx < 0 || idx >= size) {
+        return;
+      }
     }
-    if (idx < 0 || idx >= this.size()) {
-      return null;
-    }
-
     metaForNode = this.initMetaForIndex(metas.getByIndex(idx) || { idx: idx });
-    invariant(metaForNode.idx != null, 'meta should contain an index');
+    invariant(metaForNode.idx >= 0 && metaForNode.idx < size, 'meta should contain a valid index');
     poolId = this.poolIdForIndex(metaForNode.idx);
     node = Recycler.START ? this._pool.shift(poolId) : this._pool.pop(poolId);
     if (!node) {
@@ -248,6 +244,10 @@ export default class Recycler {
 
   get pool() {
     return this._pool;
+  }
+
+  static get UNKNOWN_INDEX() {
+    return -1;
   }
 
   static get START() {

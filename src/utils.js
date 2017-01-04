@@ -5,7 +5,7 @@ export function clamp(value, min, max) {
 }
 
 export function getApproxSize(renderedSize, renderedNumber, totalNumber) {
-  return renderedSize + (totalNumber - renderedNumber) * (renderedSize / renderedNumber);
+  return ~~(renderedSize + (totalNumber - renderedNumber) * (renderedSize / renderedNumber));
 }
 
 export function checkThreshold(start, end, offset, size, from, oversee) {

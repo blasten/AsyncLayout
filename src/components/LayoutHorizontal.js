@@ -139,7 +139,7 @@ export default class LayoutHorizontal extends HTMLElement {
   }
 
   _initMetaForIndex(prevState) {
-    if (prevState.idx != 0) {
+    if (prevState.idx != Recycler.UNKNOWN_INDEX) {
       // Reuse the same state.
       return prevState;
     }

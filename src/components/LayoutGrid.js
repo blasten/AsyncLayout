@@ -184,7 +184,7 @@ export default class LayoutGrid extends HTMLElement {
   }
 
   _initMetaForRowAtIndex(prevState) {
-    if (prevState.idx != 0) {
+    if (prevState.idx != Recycler.UNKNOWN_INDEX) {
       // Reuse the same state.
       return prevState;
     }
@@ -229,7 +229,7 @@ export default class LayoutGrid extends HTMLElement {
   }
 
   _initMetaForCellAtIndex(prevState) {
-    if (prevState.idx != 0) {
+    if (prevState.idx != Recycler.UNKNOWN_INDEX) {
       // Reuse the same state.
       return prevState;
     }

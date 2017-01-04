@@ -13,6 +13,7 @@ export default class LayoutVertical extends HTMLElement {
     this._props = {};
     this._sumHeights = 0;
     this._sumNodes = 0;
+    this._firstRender = false;
     this._scrollDidUpdate = this._scrollDidUpdate.bind(this);
     this._windowDidResize = this._windowDidResize.bind(this);
     // Create recyler context.
@@ -44,10 +45,7 @@ export default class LayoutVertical extends HTMLElement {
     if (!this.scrollingElement) {
       this.scrollingElement = document.scrollingElement;
     }
-    const top = getScrollTop(this.scrollingElement);
-    const clientHeight = this.scrollingElement.clientHeight;
-    this._recycler.enqueuePrerendered();
-    this._refresh(top, clientHeight);
+    this.refresh();
     window.addEventListener('resize', this._windowDidResize);
   }
 
@@ -109,7 +107,10 @@ export default class LayoutVertical extends HTMLElement {
   }
 
   get _contentHeight() {
-    return getApproxSize(this._sumHeights, this._sumNodes, this.numberOfCells);
+    // Try to use the meta of the last node.
+    const lastMeta = this._recycler.meta.getByIndex(this.numberOfCells-1);
+    return lastMeta ? lastMeta.y + lastMeta.h :
+        getApproxSize(this._sumHeights, this._sumNodes, this.numberOfCells);
   }
 
   get _medianHeight() {
@@ -126,7 +127,13 @@ export default class LayoutVertical extends HTMLElement {
   async refresh() {
     const top = getScrollTop(this.scrollingElement);
     const clientHeight = this.scrollingElement.clientHeight;
-    this._recycler.enqueueRendered();
+
+    if (!this._firstRender && this.numberOfCells > 0) {
+      this._firstRender = true;
+      this._recycler.enqueuePrerendered();
+    } else {
+      this._recycler.enqueueRendered();
+    }
     await this._refresh(top, clientHeight);
   }
 
@@ -153,8 +160,8 @@ export default class LayoutVertical extends HTMLElement {
   }
 
   _initMetaForIndex(prevState) {
-    if (prevState.idx != 0) {
-      // Reuse the same state.
+    // Reuse the same state.
+    if (prevState.idx != Recycler.UNKNOWN_INDEX) {
       return prevState;
     }
     let startMeta = this._startMeta;
