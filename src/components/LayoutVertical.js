@@ -11,6 +11,7 @@ export default class LayoutVertical extends HTMLElement {
     super();
     this.style.cssText = styleLayoutVertical;
     this._props = {};
+    this._cacheId = 0;
     this._sumHeights = 0;
     this._sumNodes = 0;
     this._firstRender = false;
@@ -140,7 +141,8 @@ export default class LayoutVertical extends HTMLElement {
   async refresh() {
     const top = getScrollTop(this.scrollingElement);
     const clientHeight = this.scrollingElement.clientHeight;
-
+    // Invalidate the cache for height.
+    this._cacheId++;
     if (!this._firstRender && this.numberOfCells > 0) {
       this._firstRender = true;
       this._recycler.enqueuePrerendered();
@@ -199,8 +201,10 @@ export default class LayoutVertical extends HTMLElement {
   }
 
   _makeActive(node, meta, nodes, metas, idx, from) {
-    meta.h = this.heightForCell(meta.idx, node);
+    // Use the cached height if the cache id is valid.
+    meta.h = meta.cacheId == this._cacheId ? meta.h : this.heightForCell(meta.idx, node);
     meta.y = getRowOffset(meta, idx, from, nodes, metas);
+    meta.cacheId = this._cacheId;
     // Keep track of the widths to estimate the mean.
     this._sumHeights = this._sumHeights + meta.h;
     this._sumNodes = this._sumNodes + 1;

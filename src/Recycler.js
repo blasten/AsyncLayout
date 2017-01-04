@@ -39,7 +39,7 @@ export default class Recycler {
         console.error('inf');
         break;
       }
-      //increment = ~~(increment*1.5);
+      increment = increment * 2;
     }
     // Schedule offscreen work.
     // if (increment > 0 && !this.hasEnoughContent(this.startMeta, this.endMeta, from)) {
