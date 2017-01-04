@@ -14,6 +14,7 @@ export default class LayoutVertical extends HTMLElement {
     this._sumHeights = 0;
     this._sumNodes = 0;
     this._firstRender = false;
+    this._startMeta = null;
     this._scrollDidUpdate = this._scrollDidUpdate.bind(this);
     this._windowDidResize = this._windowDidResize.bind(this);
     // Create recyler context.
@@ -114,7 +115,7 @@ export default class LayoutVertical extends HTMLElement {
   }
 
   get _medianHeight() {
-    return this._sumHeights/this._sumNodes || 0;
+    return ~~(this._sumHeights/this._sumNodes);
   }
 
   async _refresh(top, clientHeight) {
@@ -122,6 +123,18 @@ export default class LayoutVertical extends HTMLElement {
     this._clientHeight = clientHeight;
     await this._recycler.recycle();
     this.style.height = `${this._contentHeight}px`;
+    // Adjust first node offset and scroll bar if needed.
+    if (!this._startMeta) {
+      return;
+    }
+    const startIdx = this._startMeta.idx;
+    const startY = this._startMeta.y;
+    if ((startIdx > 0 && startY < 0) || (startIdx == 0 && startY != 0)) {
+      this._startMeta.y = this._medianHeight * startIdx;
+      setScrollTop(this.scrollingElement, this._startMeta.y + this._top - startY);
+      this._recycler.enqueueRendered();
+      await this._recycler.recycle();
+    }
   }
 
   async refresh() {
