@@ -1,5 +1,8 @@
-import { clamp, getApproxSize, eventTarget, checkThreshold, setProps,
-    getRowOffset, getScrollTop, setScrollTop } from '../utils';
+import {
+    clamp, getApproxSize, eventTarget, checkThreshold, setInstanceProps,
+    getRowOffset, getScrollTop, setScrollTop, getHeightForElement,
+    getIntervals, findIntervalIdx
+} from '../utils';
 import { styleLayoutVertical, styleItemContainerTopVertical } from './styles';
 import { forBeforePaint } from '../Async';
 import Recycler from '../Recycler';
@@ -16,6 +19,7 @@ export default class LayoutVertical extends HTMLElement {
     this._sumNodes = 0;
     this._firstRender = false;
     this._startMeta = null;
+    this._intervals = null;
     this._scrollDidUpdate = this._scrollDidUpdate.bind(this);
     this._windowDidResize = this._windowDidResize.bind(this);
     // Create recyler context.
@@ -28,18 +32,10 @@ export default class LayoutVertical extends HTMLElement {
     r.layout = this._layout.bind(this);
     r.makeActive = this._makeActive.bind(this);
     r.nodeForIndex = this._nodeForIndex.bind(this);
-    r.size = _ => this.numberOfCells;
+    r.size = _ => this._size;
     r.createNodeContainer = _ => document.createElement('div');
     this._recycler = r;
-
-    setProps(this, [
-      'bottom',
-      'poolIdForCell',
-      'domForCell',
-      'numberOfCells',
-      'heightForCell',
-      'scrollingElement'
-    ]);
+    setInstanceProps(this);
   }
 
   async connectedCallback() {
@@ -55,64 +51,102 @@ export default class LayoutVertical extends HTMLElement {
     window.removeEventListener('resize', this._windowDidResize);
   }
 
-  set bottom(v) {
-    this._props.bottom = v;
+  get numberOfSections() {
+    return this._props.numberOfSections || 0;
+  }
+
+  set numberOfSections(v) {
+    this._props.numberOfSections = v;
+  }
+
+  get numberOfRowsInSection() {
+    return this._props.numberOfRowsInSection || (_ => 0);
+  }
+
+  set numberOfRowsInSection(v) {
+    this._props.numberOfRowsInSection = v;
+  }
+
+  get poolIdForHeader() {
+    return this._props.poolIdForHeader || (_ => 'header');
+  }
+
+  set poolIdForHeader(v) {
+    this._props.poolIdForHeader = v;
+  }
+
+  get poolIdForRow() {
+    return this._props.poolIdForRow || (_ => 'row');
+  }
+
+  set poolIdForRow(v) {
+    this._props.poolIdForRow = v;
+  }
+
+  get domForHeader() {
+    return this._props.domForHeader || (_ => {});
+  }
+
+  set domForHeader(v) {
+    this._props.domForHeader = v;
+  }
+
+  get domForRow() {
+    return this._props.domForRow || (_ => {});
+  }
+
+  set domForRow(v) {
+    this._props.domForRow = v;
+  }
+
+  get heightForHeader() {
+    return this._props.heightForHeader || getHeightForElement;
+  }
+
+  set heightForHeader(v) {
+    this._props.heightForHeader = v;
+  }
+
+  get heightForRow() {
+    return this._props.heightForRow || getHeightForElement;
+  }
+
+  set heightForRow(v) {
+    this._props.heightForRow = v;
+  }
+
+  get scrollingElement() {
+    return this._props.scrollingElement;
+  }
+
+  set scrollingElement(v) {
+    if (this._props.scrollingElement) {
+      eventTarget(this._props.scrollingElement)
+          .removeEventListener('scroll', this._scrollDidUpdate);
+    }
+    eventTarget(v).addEventListener('scroll', this._scrollDidUpdate);
+    this._props.scrollingElement = v;
   }
 
   get bottom() {
     return this._props.bottom;
   }
 
-  set poolIdForCell(fn) {
-    this._props.poolIdForCell = fn;
+  set bottom(v) {
+    this._props.bottom = v;
   }
 
-  get poolIdForCell() {
-    return this._props.poolIdForCell || (_ => 0);
-  }
-
-  set domForCell(fn) {
-    this._props.domForCell = fn;
-  }
-
-  get domForCell() {
-    return this._props.domForCell;
-  }
-
-  set numberOfCells(size) {
-    this._props.numberOfCells = size;
-  }
-
-  get numberOfCells() {
-    return this._props.numberOfCells || 0;
-  }
-
-  set heightForCell(fn) {
-    this._props.heightForCell = fn;
-  }
-
-  get heightForCell() {
-    return this._props.heightForCell || ((idx, node) => node.getBoundingClientRect().height);
-  }
-
-  set scrollingElement(se) {
-    if (this._props.$scrollingElement) {
-      eventTarget(this._props.$scrollingElement)
-          .removeEventListener('scroll', this._scrollDidUpdate);
-    }
-    this._props.$scrollingElement = se;
-    eventTarget(se).addEventListener('scroll', this._scrollDidUpdate);
-  }
-
-  get scrollingElement() {
-    return this._props.$scrollingElement;
+  get _size() {
+    const intervals = this._intervals;
+    return intervals && intervals.length > 0 ? intervals[intervals.length-1][1] + 1 : 0;
   }
 
   get _contentHeight() {
     // Try to use the meta of the last node.
-    const lastMeta = this._recycler.meta.getByIndex(this.numberOfCells-1);
+    const size = this._size;
+    const lastMeta = this._recycler.meta.getByIndex(size-1);
     return lastMeta ? lastMeta.y + lastMeta.h :
-        getApproxSize(this._sumHeights, this._sumNodes, this.numberOfCells);
+        getApproxSize(this._sumHeights, this._sumNodes, size);
   }
 
   get _medianHeight() {
@@ -123,7 +157,7 @@ export default class LayoutVertical extends HTMLElement {
     this._top = top;
     this._clientHeight = clientHeight;
     await this._recycler.recycle();
-    this.style.height = `${this._contentHeight}px`;
+    this.style.height = this._size == 0 ? '' : `${this._contentHeight}px`;
     // Adjust first node offset and scroll bar if needed.
     if (!this._startMeta) {
       return;
@@ -141,9 +175,11 @@ export default class LayoutVertical extends HTMLElement {
   async refresh() {
     const top = getScrollTop(this.scrollingElement);
     const clientHeight = this.scrollingElement.clientHeight;
+    // Update intervals.
+    this._intervals = getIntervals(this.numberOfSections, this.numberOfRowsInSection);
     // Invalidate the cache for height.
     this._cacheId++;
-    if (!this._firstRender && this.numberOfCells > 0) {
+    if (!this._firstRender && this._size > 0) {
       this._firstRender = true;
       this._recycler.enqueuePrerendered();
     } else {
@@ -165,8 +201,7 @@ export default class LayoutVertical extends HTMLElement {
   }
 
   _hasEnoughContent(startMeta, endMeta, from) {
-    return checkThreshold(startMeta.y, endMeta.y, this._top, this._clientHeight, from,
-        this._clientHeight/2);
+    return true;
   }
 
   _shouldRecycle(node, meta) {
@@ -175,22 +210,25 @@ export default class LayoutVertical extends HTMLElement {
   }
 
   _initMetaForIndex(prevState) {
-    // Reuse the same state.
-    if (prevState.idx != Recycler.UNKNOWN_INDEX) {
-      return prevState;
+    let intervals = this._intervals;
+    let meta = this._startMeta;
+
+    if (prevState.idx != Recycler.UNKNOWN_IDX) {
+      return { idx: prevState.idx, h: prevState.h, y: prevState.y,
+          i: findIntervalIdx(prevState.idx, intervals) };
     }
-    let startMeta = this._startMeta;
-    if (!startMeta) {
-      return { idx: 0, h: 0, y: 0 };
+    if (!meta) {
+      return { idx: 0, h: 0, y: 0, i: findIntervalIdx(0, intervals) };
     }
-    if (this._top > 0 && !this._shouldRecycle(null, startMeta))  {
-      return startMeta;
+    if (this._top > 0 && !this._shouldRecycle(null, meta))  {
+      return { idx: meta.idx, h: meta.h, y: meta.y, i: findIntervalIdx(meta.idx, intervals) };
     }
-    return {
-      idx: clamp(~~(this._top/this._medianHeight), 0, this.numberOfCells-1),
-      h: 0,
-      y: this._top
-    };
+    meta = this._recycler.meta.find('y', this._top);
+    if (meta && !this._shouldRecycle(null, meta)) {
+      return { idx: meta.idx, h: meta.h, y: meta.y, i: findIntervalIdx(meta.idx, intervals) };
+    }
+    let idx = clamp(~~(this._top/this._medianHeight), 0, this._size-1);
+    return { idx: idx, h: 0, y: this._top, i: findIntervalIdx(idx, intervals) };
   }
 
   _layout(node, meta) {
@@ -202,7 +240,11 @@ export default class LayoutVertical extends HTMLElement {
 
   _makeActive(node, meta, nodes, metas, idx, from) {
     // Use the cached height if the cache id is valid.
-    meta.h = meta.cacheId == this._cacheId ? meta.h : this.heightForCell(meta.idx, node);
+    if (meta.cacheId != this._cacheId) {
+      const rowIdx = idx - this._intervals[meta.i][0] - 1;
+      meta.h = rowIdx == Recycler.UNKNOWN_IDX ? this.heightForHeader(node, meta.i) :
+          this.heightForRow(node, meta.i, rowIdx);
+    }
     meta.y = getRowOffset(meta, idx, from, nodes, metas);
     meta.cacheId = this._cacheId;
     // Keep track of the widths to estimate the mean.
@@ -211,12 +253,16 @@ export default class LayoutVertical extends HTMLElement {
     this._startMeta = metas.get(nodes[0]);
   }
 
-  _poolIdForIndex(idx) {
-    return this.poolIdForCell(this.bottom ? this.numberOfCells - idx - 1 : idx);
+  _poolIdForIndex(idx, meta) {
+    const rowIdx = idx - this._intervals[meta.i][0] - 1;
+    return rowIdx == Recycler.UNKNOWN_IDX ? this.poolIdForHeader(meta.i) :
+        this.poolIdForRow(meta.i, rowIdx);
   }
 
-  _nodeForIndex(idx, container) {
-    return this.domForCell(this.bottom ? this.numberOfCells - idx - 1 : idx, container);
+  _nodeForIndex(node, idx, meta) {
+    const rowIdx = idx - this._intervals[meta.i][0] - 1;
+    return rowIdx == Recycler.UNKNOWN_IDX ? this.domForHeader(node, meta.i) :
+        this.domForRow(node, meta.i, rowIdx);
   }
 }
 

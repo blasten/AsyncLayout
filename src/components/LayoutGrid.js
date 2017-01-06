@@ -278,7 +278,7 @@ export default class LayoutGrid extends HTMLElement {
     this._startColumnMeta = metas.get(nodes[0]);
   }
 
-  _cellForIndex(rowMeta, idx, node, meta) {
+  _cellForIndex(rowMeta, node, idx, meta) {
     return this.domForCell(rowMeta.idx, idx, node);
   }
 }

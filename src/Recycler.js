@@ -39,7 +39,7 @@ export default class Recycler {
         console.error('inf');
         break;
       }
-      increment = increment * 2;
+      //increment = increment * 2;
     }
     // Schedule offscreen work.
     // if (increment > 0 && !this.hasEnoughContent(this.startMeta, this.endMeta, from)) {
@@ -64,7 +64,7 @@ export default class Recycler {
     if (!node.dataset.poolId) {
       node.dataset.poolId = 0;
     }
-    node.style.display = 'none';
+    node.style.visibility = 'hidden';
     this._pool.push(node.dataset.poolId, node);
   }
 
@@ -154,7 +154,7 @@ export default class Recycler {
       return null;
     }
     if (nodes.length == 0) {
-      idx = Recycler.UNKNOWN_INDEX;
+      idx = Recycler.UNKNOWN_IDX;
     }
     else {
       idx = from == Recycler.START ? this.startMeta.idx - 1 : this.endMeta.idx + 1;
@@ -164,7 +164,7 @@ export default class Recycler {
     }
     metaForNode = this.initMetaForIndex(metas.getByIndex(idx) || { idx: idx });
     invariant(metaForNode.idx >= 0 && metaForNode.idx < size, 'meta should contain a valid index');
-    poolId = this.poolIdForIndex(metaForNode.idx);
+    poolId = this.poolIdForIndex(metaForNode.idx, metaForNode);
     node = Recycler.START ? this._pool.shift(poolId) : this._pool.pop(poolId);
     if (!node) {
       node = this.createNodeContainer();
@@ -173,8 +173,8 @@ export default class Recycler {
     metas.setByIndex(metaForNode);
     metas.set(node, metaForNode);
     node.dataset.poolId = poolId;
-    this.nodeForIndex(metaForNode.idx, node, metaForNode);
-    node.style.display = 'block';
+    this.nodeForIndex(node, metaForNode.idx, metaForNode);
+    node.style.visibility = '';
     return node;
   }
 
@@ -206,11 +206,11 @@ export default class Recycler {
 
   }
 
-  nodeForIndex(idx, node, meta) {
+  nodeForIndex(node, idx, meta) {
 
   }
 
-  poolIdForIndex(idx) {
+  poolIdForIndex(idx, meta) {
     return 0;
   }
 
@@ -246,7 +246,7 @@ export default class Recycler {
     return this._pool;
   }
 
-  static get UNKNOWN_INDEX() {
+  static get UNKNOWN_IDX() {
     return -1;
   }
 

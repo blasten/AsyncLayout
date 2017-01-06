@@ -173,8 +173,8 @@ export default class LayoutHorizontal extends HTMLElement {
     this._startMeta = metas.get(nodes[0]);
   }
 
-  _nodeForIndex(idx, container) {
-    return this.domForCell(idx, container);
+  _nodeForIndex(node, idx) {
+    return this.domForCell(idx, node);
   }
 }
 
