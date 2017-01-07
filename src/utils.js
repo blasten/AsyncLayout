@@ -1,5 +1,7 @@
 import Recycler from './Recycler';
 
+export const NOOP = _ => {};
+
 export function clamp(value, min, max) {
   return Math.max(min, Math.min(max, value));
 }
@@ -54,15 +56,15 @@ export function setProps(self, props) {
   });
 }
 
-export function setInstanceProps(self) {
-  const props = Object.keys(Object.assign({}, self));
-  props.forEach((prop) => {
-    if (prop in self.__proto__) {
-      let propVal = self[prop];
-      delete self[prop];
-      self[prop] = propVal;
-    }
-  });
+export function setInstanceProps(props, self) {
+  if (self.hasOwnProperty('props')) {
+    let userProps = self.props;
+    delete self.props;
+    self.props = props;
+    self.props = userProps;
+  } else {
+    self.props = props;
+  }
 }
 
 export function vnode() {

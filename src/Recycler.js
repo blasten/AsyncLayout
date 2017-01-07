@@ -9,10 +9,11 @@ export default class Recycler {
     invariant(meta instanceof MetaStorage, 'Invalid meta storage');
     this._container = container;
     this._meta = meta;
-    this._size = 0;
     this._pool = pool;
     this._jobId = 0;
+    this._size = 0;
     this._nodes = [];
+    this._preservedNodes = {};
   }
 
   async recycle() {
@@ -21,6 +22,7 @@ export default class Recycler {
       await this._recycle(Recycler.START, 1, this._jobId);
     }
     await this._recycle(Recycler.END, 1, this._jobId);
+    this._layoutPreservedNodes();
   }
 
   async _recycle(from, increment, jobId) {
@@ -50,47 +52,48 @@ export default class Recycler {
   }
 
   enqueuePrerendered() {
+    const empty = {};
     Array.from(this._container.children)
       .filter(node => !this._meta.has(node))
-      .forEach(node => this._putInPool(node));
+      .forEach(node => this._putInPool(node, empty));
   }
 
   enqueueRendered() {
-    this._nodes.forEach(node => this._putInPool(node));
+    this._nodes.forEach(node => this._putInPool(node, this._meta.get(node)));
     this._nodes = [];
   }
 
-  _putInPool(node) {
+  _putInPool(node, meta) {
     if (!node.dataset.poolId) {
-      node.dataset.poolId = 0;
+      node.dataset.poolId = Recycler.DEFAULT_PID;
     }
-    node.style.visibility = 'hidden';
-    this._pool.push(node.dataset.poolId, node);
-  }
-
-  _shouldRecycle(node) {
-    return this.shouldRecycle(node, this._meta.get(node));
+    if (!this._preservedNodes[meta.id]) {
+      node.style.visibility = 'hidden';
+      this._pool.push(node.dataset.poolId, node);
+    }
   }
 
   _populateClient(from, nextIncrement) {
     const nodes = this._nodes;
     const metas = this._meta;
-    let node, updates = 0;
+    let node, meta, updates = 0;
     // Enqueue node available for recycling.
     while (
       from == Recycler.END &&
       (node = nodes[0]) &&
-      this._shouldRecycle(node)
+      (meta = this._meta.get(node)) &&
+      this.shouldRecycle(node, meta)
     ) {
-      this._putInPool(node);
+      this._putInPool(node, meta);
       nodes.shift();
     }
     while (
       from == Recycler.START &&
       (node = nodes[nodes.length - 1]) &&
-      this._shouldRecycle(node)
+      (meta = this._meta.get(node)) &&
+      this.shouldRecycle(node, meta)
     ) {
-      this._putInPool(node);
+      this._putInPool(node, meta);
       nodes.pop();
     }
     // Dequeue node or allocate a new one.
@@ -122,14 +125,14 @@ export default class Recycler {
       from == Recycler.START && i >= 0;
       i--
     ) {
-      this.layout(nodes[i], metas.get(nodes[i]), nodes, metas, i, from);
+      this.layout(nodes[i], metas.get(nodes[i]));
     }
     for (
       let i = nodes.length - updates;
       from == Recycler.END && i < nodes.length;
       i++
     ) {
-      this.layout(nodes[i], metas.get(nodes[i]), nodes, metas, i, from);
+      this.layout(nodes[i], metas.get(nodes[i]));
     }
     return updates;
   }
@@ -145,7 +148,7 @@ export default class Recycler {
   }
 
   _getNode(from) {
-    let idx, metaForNode, node, poolId;
+    let idx, meta, node, poolId;
     const nodes = this._nodes;
     const metas = this._meta;
     const size = this.size();
@@ -162,20 +165,48 @@ export default class Recycler {
         return;
       }
     }
-    metaForNode = this.initMetaForIndex(metas.getByIndex(idx) || { idx: idx });
-    invariant(metaForNode.idx >= 0 && metaForNode.idx < size, 'meta should contain a valid index');
-    poolId = this.poolIdForIndex(metaForNode.idx, metaForNode);
-    node = Recycler.START ? this._pool.shift(poolId) : this._pool.pop(poolId);
+    meta = this.initMetaForIndex(metas.getByIndex(idx) || { idx: idx });
+    invariant(meta.idx >= 0 && meta.idx < size, 'meta should contain a valid index');
+    poolId = this.poolIdForIndex(meta.idx, meta);
+    if (node = this._preservedNodes[meta.id]) {
+      delete this._preservedNodes[meta.id];
+    }
+    if (!node) {
+      node = Recycler.START ? this._pool.shift(poolId) : this._pool.pop(poolId);
+    }
     if (!node) {
       node = this.createNodeContainer();
     }
     invariant(node.dataset && node.style, 'invalid node container');
-    metas.setByIndex(metaForNode);
-    metas.set(node, metaForNode);
+    metas.setByIndex(meta);
+    metas.set(node, meta);
     node.dataset.poolId = poolId;
-    this.nodeForIndex(node, metaForNode.idx, metaForNode);
+    this.nodeForIndex(node, meta.idx, meta);
     node.style.visibility = '';
     return node;
+  }
+
+  preserve(node, yes) {
+    if (!node || node.__preserved === yes) {
+      return;
+    }
+    let meta = this._meta.get(node);
+    if (yes) {
+      this._preservedNodes[meta.id] = node;
+    }
+    else if (this._preservedNodes[meta.id] === node) {
+      delete this._preservedNodes[meta.id];
+      if (this.shouldRecycle(node, meta)) {
+        this._putInPool(node, meta);
+      }
+    }
+  }
+
+  _layoutPreservedNodes() {
+    Object.keys(this._preservedNodes).forEach(id => {
+      let node = this._preservedNodes[id];
+      this.layout(node, this._meta.get(node));
+    });
   }
 
   createNodeContainer() {
@@ -198,7 +229,7 @@ export default class Recycler {
     return 0;
   }
 
-  layout(node, meta, nodes, metas) {
+  layout(node, meta) {
 
   }
 
@@ -211,7 +242,7 @@ export default class Recycler {
   }
 
   poolIdForIndex(idx, meta) {
-    return 0;
+    return Recycler.DEFAULT_PID;
   }
 
   initMetaForIndex(idx) {
@@ -256,5 +287,13 @@ export default class Recycler {
 
   static get END() {
     return 2;
+  }
+
+  static get DEFAULT_PID() {
+    return 0;
+  }
+
+  static get PRESERVED_PID() {
+    return -1;
   }
 }

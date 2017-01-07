@@ -8,6 +8,7 @@
       background-color: #ccc;
       font-weight: bold;
       padding: 10px;
+      z-index: 1;
     }
 
     .item {
@@ -59,31 +60,36 @@
             list.refresh();
           }
 
-          list.numberOfSections = 10;
-          list.numberOfRowsInSection = (section) => {
-            return hiddenSet[section] ? 0 : data.length;
-          };
-          list.domForRow = (container, section, row) => {
-            if (container.children.length === 0) {
-              container.innerHTML = `<b>${data[row].index}</b>
-                <div>${data[row].longText}</div>`;
-              container.classList.add('item');
-            } else {
-              container.children[0].textContent = data[row].index;
-              container.children[1].textContent = data[row].longText;
+          list.props = {
+            numberOfSections: 10,
+            numberOfRowsInSection: (section) => {
+              return hiddenSet[section] ? 0 : data.length;
+            },
+            domForRow: (container, section, row) => {
+              if (container.children.length === 0) {
+                container.innerHTML = `<b>${data[row].index}</b>
+                  <div>${data[row].longText}</div>`;
+                container.classList.add('item');
+              } else {
+                container.children[0].textContent = data[row].index;
+                container.children[1].textContent = data[row].longText;
+              }
+            },
+            domForHeader: (container, section) => {
+              container.dataset.section = section;
+              container.onclick = toggleHidden;
+              container.textContent = `Header for section ${section+1}`;
+              container.classList.add('header');
+            },
+            idForRow: (section, row) => {
+            return section+'_'+row;
+            },
+            idForHeader: (section) => {
+              return section;
             }
           };
-
-          list.domForHeader = (container, section) => {
-            container.dataset.section = section;
-            container.onclick = toggleHidden;
-            container.textContent = `Header for section ${section+1}`;
-            container.classList.add('header');
-          };
-          list.refresh();
+        list.refresh();
       });
-
-      list.scrollingElement = document.scrollingElement;
 
     })(document.querySelector('layout-vertical'));
   </script>
