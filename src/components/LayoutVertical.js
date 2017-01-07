@@ -168,7 +168,7 @@ export default class LayoutVertical extends HTMLElement {
       isHeader: isHeader,
       secIdx: secIdx,
       rowIdx: rowIdx,
-      cacheId: -1
+      cacheId: meta.cacheId || -1
     };
   }
 
