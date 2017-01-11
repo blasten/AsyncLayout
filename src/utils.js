@@ -2,6 +2,8 @@ import Recycler from './Recycler';
 
 export const NOOP = _ => {};
 
+export const EMPTY = {};
+
 export function clamp(value, min, max) {
   return Math.max(min, Math.min(max, value));
 }

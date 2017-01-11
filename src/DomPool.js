@@ -3,11 +3,11 @@ export default class DomPool {
     this._pools = {};
   }
 
-  push(poolId, obj) {
+  push(poolId, node) {
     if (!this._pools[poolId]) {
       this._pools[poolId] = [];
     }
-    this._pools[poolId].push(obj);
+    this._pools[poolId].push(node);
   }
 
   pop(poolId) {
@@ -17,14 +17,7 @@ export default class DomPool {
     return this._pools[poolId].pop();
   }
 
-  shift(poolId) {
-    if (!this._pools[poolId]) {
-      return null;
-    }
-    return this._pools[poolId].shift();
-  }
-
   getById(poolId) {
-    return this._pools[poolId] || [];
+    return this._pools[poolId];
   }
 }
