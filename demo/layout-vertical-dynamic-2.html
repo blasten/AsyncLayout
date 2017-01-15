@@ -59,7 +59,7 @@
 
           function toggleHidden() {
             hiddenSet[this.dataset.section] = !hiddenSet[this.dataset.section];
-            list.refresh();
+            list.props = list.props;
           }
 
           list.props = {
@@ -95,6 +95,6 @@
     })(document.querySelector('layout-vertical'));
   </script>
 
-  <script src="../dist/layout.js" async></script>
+  <script src="../dist/layout.min.js"></script>
 </body>
 </html>

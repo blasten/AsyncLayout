@@ -59,38 +59,43 @@
 
           function toggleHidden() {
             hiddenSet[this.dataset.section] = !hiddenSet[this.dataset.section];
-            list.refresh();
+            list.props = list.props;
           }
 
-          list.props = {
-            numberOfSections: 10,
-            bottom: true,
-            numberOfRowsInSection: (section) => {
-              return hiddenSet[section] ? 0 : data.length;
-            },
-            domForRow: (container, section, row) => {
-              if (container.children.length === 0) {
-                container.innerHTML = `<b>${data[row].index}</b>
-                  <div>${data[row].longText}</div>`;
-                container.classList.add('item');
-              } else {
-                container.children[0].textContent = data[row].index;
-                container.children[1].textContent = data[row].longText;
+          requestAnimationFrame(function() {
+            window.scrollTo(0, 1000000);
+            list.props = {
+              numberOfSections: 10,
+              bottom: true,
+              numberOfRowsInSection: (section) => {
+                return hiddenSet[section] ? 0 : data.length;
+              },
+              domForRow: (container, section, row) => {
+                if (container.children.length === 0) {
+                  container.innerHTML = `<b>${data[row].index}</b>
+                    <div>${data[row].longText}</div>`;
+                  container.classList.add('item');
+                } else {
+                  container.children[0].textContent = data[row].index;
+                  container.children[1].textContent = data[row].longText;
+                }
+              },
+              domForHeader: (container, section) => {
+                container.dataset.section = section;
+                container.onclick = toggleHidden;
+                container.textContent = `Header for section ${section+1}`;
+                container.classList.add('header');
+              },
+              idForRow: (section, row) => {
+                return section+'_'+row;
+              },
+              idForHeader: (section) => {
+                return section;
               }
-            },
-            domForHeader: (container, section) => {
-              container.dataset.section = section;
-              container.onclick = toggleHidden;
-              container.textContent = `Header for section ${section+1}`;
-              container.classList.add('header');
-            },
-            idForRow: (section, row) => {
-              return section+'_'+row;
-            },
-            idForHeader: (section) => {
-              return section;
-            }
-          };
+            };
+          });
+
+     
       });
 
     })(document.querySelector('layout-vertical'));

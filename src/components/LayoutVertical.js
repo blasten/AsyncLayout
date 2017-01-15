@@ -1,13 +1,12 @@
 import {
     clamp, getApproxSize, eventTarget, checkThreshold, setInstanceProps,
     getRowOffset, getScrollTop, setScrollTop, getHeightForElement,
-    getIntervals, findIntervalIdx, NOOP, EMPTY, invariant
+    getIntervals, findIntervalIdx, findInObject, invariant
 } from '../utils';
 import { styleLayoutVertical, styleItemContainerTopVertical } from './styles';
+import { EMPTY, UNKNOWN_IDX, NOOP } from '../constants';
 import { forBeforePaint } from '../Async';
 import Recycler from '../Recycler';
-import DomPool from '../DomPool';
-import MetaStorage from '../MetaStorage';
 
 export default class LayoutVertical extends HTMLElement {
   constructor() {
@@ -18,10 +17,12 @@ export default class LayoutVertical extends HTMLElement {
     this._sumNodes = 0;
     this._firstRender = false;
     this._intervals = null;
+    this._storage = {};
+    this._pool = {};
     this._scrollDidUpdate = this._scrollDidUpdate.bind(this);
     this._windowDidResize = this._windowDidResize.bind(this);
     // Create recyler context.
-    const r = new Recycler(this, new DomPool(), new MetaStorage());
+    const r = new Recycler(this, this._pool, this._storage, new WeakMap());
     r.initMetaForIndex = this._initMetaForIndex.bind(this);
     r.shouldRecycle = this._shouldRecycle.bind(this);
     r.isClientFull = this._isClientFull.bind(this);
@@ -62,8 +63,8 @@ export default class LayoutVertical extends HTMLElement {
   }
 
   set props(v) {
-    let oldProps = this._props;
-    let newProps = Object.assign({}, oldProps, v);
+    let oldProps = this._props,
+        newProps = Object.assign({}, oldProps, v);
 
     if (!oldProps || oldProps.scrollingElement !== newProps.scrollingElement) {
       if (oldProps) {
@@ -74,7 +75,7 @@ export default class LayoutVertical extends HTMLElement {
           .addEventListener('scroll', this._scrollDidUpdate);
     }
     this._props = newProps;
-    this._render(newProps);
+    this.render();
   }
 
   get _size() {
@@ -85,7 +86,7 @@ export default class LayoutVertical extends HTMLElement {
   get _contentHeight() {
     // Try to use the meta of the last node.
     const size = this._size;
-    const lastMeta = this._recycler.meta.getByIndex(size-1);
+    const lastMeta = this._storage[size-1];
     return lastMeta ? lastMeta.y + lastMeta.h :
         getApproxSize(this._sumHeights, this._sumNodes, size);
   }
@@ -94,17 +95,9 @@ export default class LayoutVertical extends HTMLElement {
     return ~~(this._sumHeights/this._sumNodes);
   }
 
-  async _render(props) {
-    await forBeforePaint();
-    if (props === this._props) {
-      this.refresh();
-    }
-  }
-
-  async _refresh(top, clientHeight) {
-    if (this.props.bottom) {
-      let se = this.props.scrollingElement;
-      top = (se.scrollHeight + se.clientHeight) - top;
+  async _render(top, clientHeight) {
+    if (!this._firstRender) {
+      return;
     }
     this._top = top;
     this._clientHeight = clientHeight;
@@ -130,16 +123,23 @@ export default class LayoutVertical extends HTMLElement {
     }
     let sec = this._intervals[this._recycler.startMeta.secIdx];
     let secStartIdx = this.props.bottom ? this._size - sec[1] - 1 : sec[0],
-        m = this._recycler.meta.getByIndex(secStartIdx);
+        m = this._storage[secStartIdx];
     if (!m || !this._recycler._keptNodes[m.id]) {
       this._recycler.removeKeptNodes();
       this._recycler.keepIdx(secStartIdx, true);
     }
   }
 
-  async refresh() {
-    let props = this.props,
-        top = getScrollTop(props.scrollingElement),
+  async render() {
+    let props = this.props;
+
+    await forBeforePaint();
+
+    if (this.props !== props) {
+      return;
+    }
+
+    let top = getScrollTop(props.scrollingElement),
         clientHeight = props.scrollingElement.clientHeight;
     // Update intervals.
     this._intervals = getIntervals(props.numberOfSections, props.numberOfRowsInSection);
@@ -158,16 +158,16 @@ export default class LayoutVertical extends HTMLElement {
     else {
       this._recycler.enqueueRendered();
     }
-    await this._refresh(top, clientHeight);
+    await this._render(top, clientHeight);
   }
 
   _scrollDidUpdate() {
     let se = this.props.scrollingElement;
-    this._refresh(getScrollTop(se), se.clientHeight);
+    this._render(getScrollTop(se), se.clientHeight);
   }
 
   _windowDidResize() {
-    this.refresh();
+    this.render();
   }
 
   _isClientFull(startMeta, endMeta, from) {
@@ -185,10 +185,11 @@ export default class LayoutVertical extends HTMLElement {
 
   _copyMeta(meta) {
     let intervals = this._intervals,
-        tidx = meta.idx,
+        bottom = this.props.bottom,
+        tidx = bottom ? this._size - meta.idx - 1 : meta.idx,
         secIdx = findIntervalIdx(tidx, intervals),
-        rowIdx = tidx - intervals[secIdx][0] - 1,
-        isHeader = (tidx == intervals[secIdx][this.props.bottom ? 0 : 0]),
+        rowIdx = bottom ? tidx - intervals[secIdx][0] : tidx - intervals[secIdx][0] - 1,
+        isHeader = (tidx == intervals[secIdx][bottom ? 1 : 0]),
         id = isHeader ? this.props.idForHeader(secIdx) : this.props.idForRow(secIdx, rowIdx);
 
     invariant(id != null, 'Invalid id. Provide a valid id using idForHeader or idForRow.');
@@ -206,10 +207,10 @@ export default class LayoutVertical extends HTMLElement {
   }
 
   _initMetaForIndex(prevState) {
-    if (prevState.idx != Recycler.UNKNOWN_IDX) {
+    if (prevState.idx != UNKNOWN_IDX) {
       return this._copyMeta(prevState);
     }
-    let meta = this._recycler.meta.find('y', this._top);
+    let meta = findInObject(this._storage, 'y', this._top);
     if (meta && meta.idx < this._size && !this._shouldRecycle(null, meta)) {
       return this._copyMeta(meta);
     }
@@ -223,20 +224,14 @@ export default class LayoutVertical extends HTMLElement {
     node.style.position = 'absolute';
     node.style.left = '0px';
     node.style.right = '0px';
-
-    if (this.props.bottom) {
-      node.style.top = 'auto';
-      node.style.bottom = `${meta.y}px`;
-    } else {
-      node.style.top = `${meta.y}px`;
-      node.style.bottom = 'auto';
-    }
+    node.style.top = `${meta.y}px`;
 
     if (!meta.isHeader) {
       return;
     }
+
     let nextInterval = intervals[meta.secIdx + 1],
-        nextHeaderMeta = nextInterval ? recycler.meta.getByIndex(nextInterval[0]) : null;
+        nextHeaderMeta = nextInterval ? this._storage[nextInterval[0]] : null;
 
     recycler.keep(node, true);
 

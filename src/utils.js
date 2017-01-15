@@ -1,8 +1,4 @@
-import Recycler from './Recycler';
-
-export const NOOP = _ => {};
-
-export const EMPTY = {};
+import { RENDER_START, RENDER_END } from './constants';
 
 export function clamp(value, min, max) {
   return Math.max(min, Math.min(max, value));
@@ -13,15 +9,15 @@ export function getApproxSize(renderedSize, renderedNumber, totalNumber) {
 }
 
 export function checkThreshold(start, end, offset, size, from, oversee) {
-  return from == Recycler.START ? (start <= offset - oversee) : (end >= offset + size + oversee);
+  return from == RENDER_START ? (start <= offset - oversee) : (end >= offset + size + oversee);
 }
 
 export function getRowOffset(meta, idx, from, nodes, metas) {
-  if (from == Recycler.START && idx + 1 < nodes.length) {
+  if (from == RENDER_START && idx + 1 < nodes.length) {
     let nextM = metas.get(nodes[idx + 1]);
     return nextM.y - meta.h;
   }
-  else if (from == Recycler.END && idx > 0) {
+  else if (from == RENDER_END && idx > 0) {
     let prevM = metas.get(nodes[idx - 1]);
     return prevM.y + prevM.h;
   }
@@ -29,11 +25,11 @@ export function getRowOffset(meta, idx, from, nodes, metas) {
 }
 
 export function getColumnOffset(meta, idx, from, nodes, metas) {
-  if (from == Recycler.START && idx + 1 < nodes.length) {
+  if (from == RENDER_START && idx + 1 < nodes.length) {
     let nextM = metas.get(nodes[idx + 1]);
     return nextM.x - meta.w;
   }
-  else if (from == Recycler.END && idx > 0) {
+  else if (from == RENDER_END && idx > 0) {
     let prevM = metas.get(nodes[idx - 1]);
     return prevM.x + prevM.w;
   }
@@ -127,4 +123,27 @@ export function findIntervalIdx(idx, intervals) {
     }
   }
   return null;
+}
+
+export function findInObject(obj, prop, value) {
+  // Could be binary, but that would require an interval tree...
+  return Object.keys(obj).reduce((current, key) => {
+    let meta = obj[key];
+    return (meta[prop] <= value && (!current || value-meta[prop] < value-current[prop])) ?
+        meta : current;
+  }, null);
+}
+
+export function pushToPool(pool, poolId, node) {
+  if (!pool[poolId]) {
+    pool[poolId] = [];
+  }
+  pool[poolId].push(node);
+}
+
+export function popFromPool(pool, poolId) {
+  if (!pool[poolId]) {
+    return null;
+  }
+  return pool[poolId].pop();
 }

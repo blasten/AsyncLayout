@@ -6,13 +6,10 @@
   "scripts": {
     "test": "mocha",
     "serve": "python server.py",
-    "build": "npm-run-all transpile:layout build:inline-styles",
-    "transpile:layout": "BABEL_ENV=es6 rollup src/components/all.js -f umd -n Layout -c build/rollup.config.es6.js --output dist/layout.js",
-    "minify:layout": "uglifyjs dist/layout.js -o dist/layout.min.js",
-    "build:inline-styles": "rollup build/inline-styles.js -f cjs --output dist/inline-styles.js && node dist/inline-styles.js > dist/layout.css && rm -f dist/inline-styles.js",
-
-    "transpile:list-view-es5": "BABEL_ENV=es5 rollup src/ListView.js -f umd -n ListView -c build/rollup.config.es5.js --output ListView.es5.js",
-    "minify:list-view-es5": "uglifyjs ListView.es5.js -o ListView.es5.min.js"
+    "build": "npm-run-all transpile inline-styles",
+    "transpile": "rollup src/components/all.js -f umd -n Layout -c build/rollup.config.js --output dist/layout.js",
+    "minimize": "uglifyjs dist/layout.js -c collapse_vars,evaluate,screw_ie8,unsafe,loops,keep_fargs,pure_getters,unused,dead_code -m --mangle-props --mangle-regex='/^_/' -o dist/layout.min.js",
+    "inline-styles": "rollup build/inline-styles.js -f cjs --output dist/inline-styles.js && node dist/inline-styles.js > dist/layout.css && rm -f dist/inline-styles.js"
   },
   "repository": {
     "type": "git",
@@ -25,30 +22,25 @@
   },
   "homepage": "https://github.com/blasten/UITableView.js#readme",
   "devDependencies": {
-    "babel-plugin-async-to-promises": "^1.0.5",
-    "babel-plugin-es6-promise": "^1.0.0",
+    "babel-preset-babili": "0.0.9",
     "babel-preset-es2015-rollup": "^3.0.0",
     "expect.js": "^0.3.1",
     "mocha": "^2.4.5",
     "npm-run-all": "^3.1.2",
     "rollup": "^0.37.0",
+    "rollup-plugin-async": "^1.2.0",
     "rollup-plugin-babel": "^2.7.1",
     "uglify-js": "git+https://github.com/mishoo/UglifyJS2.git#harmony"
   },
   "babel": {
     "env": {
-      "es5": {
+      "development": {},
+      "production": {
         "presets": [
-          "es2015-rollup"
+          "babili"
         ],
         "plugins": [
-          "async-to-promises",
-          "es6-promise"
-        ]
-      },
-      "es6": {
-        "plugins": [
-          "async-to-promises"
+          "minify-mangle-names"
         ]
       }
     }
