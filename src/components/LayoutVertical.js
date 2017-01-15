@@ -1,12 +1,12 @@
+import { EMPTY, UNKNOWN_IDX, NOOP } from '../constants';
+import { forBeforePaint } from '../Async';
+import Recycler from '../Recycler';
+import { styleLayoutVertical, styleItemContainerTopVertical } from './styles';
 import {
     clamp, getApproxSize, eventTarget, checkThreshold, setInstanceProps,
     getRowOffset, getScrollTop, setScrollTop, getHeightForElement,
     getIntervals, findIntervalIdx, findInObject, invariant
 } from '../utils';
-import { styleLayoutVertical, styleItemContainerTopVertical } from './styles';
-import { EMPTY, UNKNOWN_IDX, NOOP } from '../constants';
-import { forBeforePaint } from '../Async';
-import Recycler from '../Recycler';
 
 export default class LayoutVertical extends HTMLElement {
   constructor() {
