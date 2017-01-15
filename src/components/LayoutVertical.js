@@ -22,18 +22,18 @@ export default class LayoutVertical extends HTMLElement {
     this._scrollDidUpdate = this._scrollDidUpdate.bind(this);
     this._windowDidResize = this._windowDidResize.bind(this);
     // Create recyler context.
-    const r = new Recycler(this, this._pool, this._storage, new WeakMap());
-    r.initMetaForIndex = this._initMetaForIndex.bind(this);
-    r.shouldRecycle = this._shouldRecycle.bind(this);
-    r.isClientFull = this._isClientFull.bind(this);
-    r.hasEnoughContent = this._hasEnoughContent.bind(this);
-    r.poolIdForIndex = this._poolIdForIndex.bind(this);
-    r.layout = this._layout.bind(this);
-    r.makeActive = this._makeActive.bind(this);
-    r.nodeForIndex = this._nodeForIndex.bind(this);
-    r.size = _ => this._size;
-    r.createNodeContainer = _ => document.createElement('div');
-    this._recycler = r;
+    const recycler = new Recycler(this, this._pool, this._storage, new WeakMap());
+    recycler.$initMetaForIndex = this._initMetaForIndex.bind(this);
+    recycler.$shouldRecycle = this._shouldRecycle.bind(this);
+    recycler.$isClientFull = this._isClientFull.bind(this);
+    recycler.$hasEnoughContent = this._hasEnoughContent.bind(this);
+    recycler.$poolIdForIndex = this._poolIdForIndex.bind(this);
+    recycler.$layout = this._layout.bind(this);
+    recycler.$makeActive = this._makeActive.bind(this);
+    recycler.$nodeForIndex = this._nodeForIndex.bind(this);
+    recycler.$size = _ => this._size;
+    recycler.$createNodeContainer = _ => document.createElement('div');
+    this._recycler = recycler;
     setInstanceProps({
       numberOfSections: 0,
       numberOfRowsInSection: (_ => 0),

@@ -30,26 +30,20 @@ export default class Recycler {
     if (this._jobId != jobId) {
       return;
     }
-    var x = 0;
     // Schedule onscreen work.
-    while (!this.isClientFull(this.startMeta, this.endMeta, from)) {
+    while (!this.$isClientFull(this.startMeta, this.endMeta, from)) {
       let now = performance.now();
       if ((increment = this._populateClient(from, increment)) === 0) {
         break;
       }
       this._unitCost = (performance.now() - now) / increment;
-      if (++x > 100) {
-        console.error('inf');
-        break;
-      }
-      //increment = increment * 2;
     }
     // Schedule offscreen work.
-    // if (increment > 0 && !this.hasEnoughContent(this.startMeta, this.endMeta, from)) {
-    //   let idle = await forIdleTime();
-    //   increment = clamp(~~(idle.timeRemaining() / this._unitCost), 1, this._nodes.length);
-    //   await this._recycle(from, this._populateClient(from, increment) * 2, jobId);
-    // }
+    if (0 && increment > 0 && !this.$hasEnoughContent(this.startMeta, this.endMeta, from)) {
+      let idle = await forIdleTime();
+      increment = clamp(~~(idle.timeRemaining() / this._unitCost), 1, this._nodes.length);
+      await this._recycle(from, this._populateClient(from, increment) * 2, jobId);
+    }
   }
 
   enqueuePrerendered() {
@@ -61,7 +55,7 @@ export default class Recycler {
   enqueueRendered() {
     this._nodes.forEach(node => {
       this.keep(node, false);
-      this.hideNode(node);
+      this._hideNode(node);
     });
     this._nodes = [];
   }
@@ -71,20 +65,23 @@ export default class Recycler {
       node.dataset.poolId = DEFAULT_POOL_ID;
     }
     if (!this._keptNodes[node.dataset.id]) {
-      this.hideNode(node);
+      this._hideNode(node);
       pushToPool(this._pool, node.dataset.poolId, node);
     }
   }
 
   _populateClient(from, nextIncrement) {
     let node, meta, updates = 0, nodes = this._nodes,
+        shouldRecycle = this.$shouldRecycle,
+        makeActive = this.$makeActive,
+        layout = this.$layout,
         metas = this._meta;
     // Enqueue node available for recycling.
     while (
       from == RENDER_END &&
       (node = nodes[0]) &&
       (meta = this._meta.get(node)) &&
-      this.shouldRecycle(node, meta)
+      shouldRecycle(node, meta)
     ) {
       this._putInPool(node);
       nodes.shift();
@@ -93,7 +90,7 @@ export default class Recycler {
       from == RENDER_START &&
       (node = nodes[nodes.length - 1]) &&
       (meta = this._meta.get(node)) &&
-      this.shouldRecycle(node, meta)
+      shouldRecycle(node, meta)
     ) {
       this._putInPool(node);
       nodes.pop();
@@ -113,14 +110,14 @@ export default class Recycler {
       from == RENDER_START && i >= 0;
       i--
     ) {
-      this.makeActive(nodes[i], metas.get(nodes[i]), nodes, metas, i, from);
+      makeActive(nodes[i], metas.get(nodes[i]), nodes, metas, i, from);
     }
     for (
       let i = nodes.length - updates;
       from == RENDER_END && i < nodes.length;
       i++
     ) {
-      this.makeActive(nodes[i], metas.get(nodes[i]), nodes, metas, i, from);
+      makeActive(nodes[i], metas.get(nodes[i]), nodes, metas, i, from);
     }
     // Write.
     for (
@@ -128,14 +125,14 @@ export default class Recycler {
       from == RENDER_START && i >= 0;
       i--
     ) {
-      this.layout(nodes[i], metas.get(nodes[i]));
+      layout(nodes[i], metas.get(nodes[i]));
     }
     for (
       let i = nodes.length - updates;
       from == RENDER_END && i < nodes.length;
       i++
     ) {
-      this.layout(nodes[i], metas.get(nodes[i]));
+      layout(nodes[i], metas.get(nodes[i]));
     }
     return updates;
   }
@@ -148,7 +145,7 @@ export default class Recycler {
   }
 
   _getNode(from) {
-    let idx, size = this.size();
+    let idx, size = this.$size();
     if (size == 0) {
       return null;
     }
@@ -166,11 +163,11 @@ export default class Recycler {
 
   _getNodeByIdx(idx) {
     let meta, node, poolId, metas = this._meta,
-        size = this.size(), knodes = this._keptNodes;
+        size = this.$size(), knodes = this._keptNodes;
 
-    meta = this.initMetaForIndex(this._storage[idx] || { idx: idx });
+    meta = this.$initMetaForIndex(this._storage[idx] || { idx: idx });
     invariant(meta.idx >= 0 && meta.idx < size, 'meta should contain a valid index');
-    poolId = this.poolIdForIndex(meta.idx, meta);
+    poolId = this.$poolIdForIndex(meta.idx, meta);
     if (knodes[meta.id] && (node = knodes[meta.id].node)) {
       delete knodes[meta.id];
     }
@@ -178,7 +175,7 @@ export default class Recycler {
       node = popFromPool(this._pool, poolId);
     }
     if (!node) {
-      node = this.createNodeContainer();
+      node = this.$createNodeContainer();
     }
     invariant(node.dataset && node.style, 'invalid node container');
     this._storage[meta.idx] = meta;
@@ -186,7 +183,7 @@ export default class Recycler {
     node.dataset.id = meta.id;
     node.dataset.poolId = poolId;
     node.style.pointerEvents = '';
-    this.nodeForIndex(node, meta.idx, meta);
+    this.$nodeForIndex(node, meta.idx, meta);
     return node;
   }
 
@@ -203,7 +200,7 @@ export default class Recycler {
     if (entry && entry.node == node) {
       let meta = this._meta.get(node);
       delete this._keptNodes[id];
-      if (!entry.retained || this.shouldRecycle(node, meta)) {
+      if (!entry.retained || this.$shouldRecycle(node, meta)) {
         this._putInPool(node);
       }
     }
@@ -228,65 +225,17 @@ export default class Recycler {
     Object.keys(knodes).forEach(id => {
       let node = knodes[id].node;
       if (knodes[id].retained) {
-        this.layout(node, this._meta.get(node));
+        this.$layout(node, this._meta.get(node));
       } else {
         this.release(node);
       }
     });
   }
 
-  createNodeContainer() {
-    return null;
-  }
-
-  shouldRecycle(node, meta) {
-    return true;
-  }
-
-  isClientFull(startMeta, endMeta, from) {
-    return true;
-  }
-
-  hasEnoughContent(startMeta, endMeta, from) {
-    return true;
-  }
-
-  size() {
-    return 0;
-  }
-
-  layout(node, meta) {
-
-  }
-
-  makeActive(node, meta, nodes, metas, idx, from) {
-
-  }
-
-  nodeForIndex(node, idx, meta) {
-
-  }
-
-  poolIdForIndex(idx, meta) {
-    return DEFAULT_POOL_ID;
-  }
-
-  initMetaForIndex(idx) {
-    return { idx: idx };
-  }
-
-  initIndex() {
-    return 0;
-  }
-
-  hideNode(node) {
+  _hideNode(node) {
     node.style.position = 'absolute';
     node.style.pointerEvents = 'none';
     node.style.top = '-100000000px';
-  }
-
-  get meta() {
-    return this._meta;
   }
 
   get startNode() {
@@ -303,5 +252,45 @@ export default class Recycler {
 
   get endMeta() {
     return this._meta.get(this.endNode) || EMPTY;
+  }
+
+  $createNodeContainer() {
+    return null;
+  }
+
+  $shouldRecycle(node, meta) {
+    return true;
+  }
+
+  $isClientFull(startMeta, endMeta, from) {
+    return true;
+  }
+
+  $hasEnoughContent(startMeta, endMeta, from) {
+    return true;
+  }
+
+  $size() {
+    return 0;
+  }
+
+  $layout(node, meta) {
+
+  }
+
+  $makeActive(node, meta, nodes, metas, idx, from) {
+
+  }
+
+  $nodeForIndex(node, idx, meta) {
+
+  }
+
+  $poolIdForIndex(idx, meta) {
+    return DEFAULT_POOL_ID;
+  }
+
+  $initMetaForIndex(idx) {
+    return { idx: idx, id: idx };
   }
 }
