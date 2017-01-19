@@ -147,3 +147,7 @@ export function popFromPool(pool, poolId) {
   }
   return pool[poolId].pop();
 }
+
+export function getDiv() {
+  return document.createElement('div');
+}

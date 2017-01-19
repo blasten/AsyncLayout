@@ -17,13 +17,23 @@ export default class Recycler {
     this._keptNodes = {};
   }
 
-  async recycle() {
-    this._jobId++;
-    if (this._nodes.length > 0) {
-      await this._recycle(RENDER_START, 1, this._jobId);
+  async recycle(excludedNodes) {
+    if (excludedNodes) {
+      let resetSet = new Array(excludedNodes.length);
+      excludedNodes.forEach((node, idx) => {
+        let id = node.dataset.id;
+        resetSet[idx] = this._keptNodes[id] ? null : id;
+        this._keepNode(node);
+      });
+      if (excludedNodes === this._nodes) {
+        this._nodes = [];
+      }
+      await this._recycle(RENDER_END, Math.max(1, resetSet.length), ++this._jobId);
+      resetSet.forEach(id => this.release(id));
+    } else {
+      await this._recycle(RENDER_START, 1, ++this._jobId);
+      await this._recycle(RENDER_END, 1, ++this._jobId);
     }
-    await this._recycle(RENDER_END, 1, this._jobId);
-    this._layoutKeptNodes();
   }
 
   async _recycle(from, increment, jobId) {
@@ -37,6 +47,7 @@ export default class Recycler {
         break;
       }
       this._unitCost = (performance.now() - now) / increment;
+      increment = 1;
     }
     // Schedule offscreen work.
     if (0 && increment > 0 && !this.$hasEnoughContent(this.startMeta, this.endMeta, from)) {
@@ -46,36 +57,23 @@ export default class Recycler {
     }
   }
 
-  enqueuePrerendered() {
-    Array.from(this._container.children)
-      .filter(node => !this._meta.has(node))
-      .forEach(node => this.keep(node, false));
-  }
-
-  enqueueRendered() {
-    this._nodes.forEach(node => {
-      this.keep(node, false);
-      this._hideNode(node);
-    });
-    this._nodes = [];
-  }
-
   _putInPool(node) {
-    if (!node.dataset.poolId) {
-      node.dataset.poolId = DEFAULT_POOL_ID;
+    let dataset = node.dataset;
+    if (!dataset.poolId) {
+      dataset.poolId = DEFAULT_POOL_ID;
     }
-    if (!this._keptNodes[node.dataset.id]) {
+    if (!this._keptNodes[dataset.id]) {
       this._hideNode(node);
-      pushToPool(this._pool, node.dataset.poolId, node);
+      pushToPool(this._pool, dataset.poolId, node);
     }
   }
 
   _populateClient(from, nextIncrement) {
     let node, meta, updates = 0, nodes = this._nodes,
+        metas = this._meta,
         shouldRecycle = this.$shouldRecycle,
         makeActive = this.$makeActive,
-        layout = this.$layout,
-        metas = this._meta;
+        layout = this.$layout;
     // Enqueue node available for recycling.
     while (
       from == RENDER_END &&
@@ -162,96 +160,79 @@ export default class Recycler {
   }
 
   _getNodeByIdx(idx) {
-    let meta, node, poolId, metas = this._meta,
-        size = this.$size(), knodes = this._keptNodes;
+    let meta, node, id, poolId, size = this.$size();
 
-    meta = this.$initMetaForIndex(this._storage[idx] || { idx: idx });
+    meta = this.$initMeta(this._storage[idx] || { idx, id: idx });
     invariant(meta.idx >= 0 && meta.idx < size, 'meta should contain a valid index');
     poolId = this.$poolIdForIndex(meta.idx, meta);
-    if (knodes[meta.id] && (node = knodes[meta.id].node)) {
-      delete knodes[meta.id];
-    }
-    if (!node) {
-      node = popFromPool(this._pool, poolId);
-    }
-    if (!node) {
-      node = this.$createNodeContainer();
-    }
+    node = this._keptNodes[meta.id] || popFromPool(this._pool, poolId) || this.$createNodeContainer();
     invariant(node.dataset && node.style, 'invalid node container');
     this._storage[meta.idx] = meta;
-    metas.set(node, meta);
+    this._meta.set(node, meta);
     node.dataset.id = meta.id;
     node.dataset.poolId = poolId;
     node.style.pointerEvents = '';
-    this.$nodeForIndex(node, meta.idx, meta);
+    this.$updateNode(node, meta.idx, meta);
     return node;
   }
 
-  keep(node, retained) {
-    if (node.dataset.id == null) {
-      this._putInPool(node);
+  has(idx) {
+    return idx >= this.startMeta.idx && idx <= this.endMeta.idx;
+  }
+
+  _keepNode(node) {
+    invariant(node.dataset.id != '', 'Node should contain a data-id property');
+    this._keptNodes[node.dataset.id] = node;
+  }
+
+  keep(idx) {
+    let node, meta = this._storage[idx];
+    if (meta && (node = this._keptNodes[meta.id])) {
+      this.$layout(node, meta);
+      return meta.id;
+    }
+    node = this.has(idx) ? this._nodes[idx - this.startMeta.idx] :
+        this._getNodeByIdx(idx);
+    this._keepNode(node, false);
+    this._append(node, RENDER_END);
+    this.$layout(node, this._meta.get(node));
+    return node.dataset.id;
+  }
+
+  release(id) {
+    let node = this._keptNodes[id];
+    if (!node) {
+      return;
+    }
+    let meta = this._meta.get(node);
+
+    delete this._keptNodes[id];
+
+    if (this._nodes[meta.idx-this.startMeta.idx] === node) {
+      this.$layout(node, meta);
     } else {
-      this._keptNodes[node.dataset.id] = { node, retained };
+      this._putInPool(node);
     }
-  }
-
-  release(node) {
-    let id = node.dataset.id, entry = this._keptNodes[id];
-    if (entry && entry.node == node) {
-      let meta = this._meta.get(node);
-      delete this._keptNodes[id];
-      if (!entry.retained || this.$shouldRecycle(node, meta)) {
-        this._putInPool(node);
-      }
-    }
-  }
-
-  keepIdx(idx, yes) {
-    if (this.startMeta.idx < idx || this.endMeta.idx > idx) {
-      let node = this._getNodeByIdx(idx);
-      this.keep(node, true);
-      this._append(node, RENDER_END);
-      this._layoutKeptNodes();
-    }
-  }
-
-  removeKeptNodes() {
-    Object.keys(this._keptNodes)
-        .forEach(id => this.release(this._keptNodes[id].node));
-  }
-
-  _layoutKeptNodes() {
-    let knodes = this._keptNodes;
-    Object.keys(knodes).forEach(id => {
-      let node = knodes[id].node;
-      if (knodes[id].retained) {
-        this.$layout(node, this._meta.get(node));
-      } else {
-        this.release(node);
-      }
-    });
   }
 
   _hideNode(node) {
-    node.style.position = 'absolute';
-    node.style.pointerEvents = 'none';
-    node.style.top = '-100000000px';
-  }
-
-  get startNode() {
-    return this._nodes[0];
-  }
-
-  get endNode() {
-    return this._nodes[this._nodes.length - 1];
+    let style = node.style;
+    style.position = 'absolute';
+    style.pointerEvents = 'none';
+    style.top = '-100000000px';
+    style.bottom = '';
   }
 
   get startMeta() {
-    return this._meta.get(this.startNode) || EMPTY;
+    return this._meta.get(this._nodes[0]) || EMPTY;
   }
 
   get endMeta() {
-    return this._meta.get(this.endNode) || EMPTY;
+    return this._meta.get(this._nodes[this._nodes.length-1]) || EMPTY;
+  }
+
+  get nodes() {
+    return this._nodes;
   }
 
   $createNodeContainer() {
@@ -282,7 +263,7 @@ export default class Recycler {
 
   }
 
-  $nodeForIndex(node, idx, meta) {
+  $updateNode(node, idx, meta) {
 
   }
 
@@ -290,7 +271,8 @@ export default class Recycler {
     return DEFAULT_POOL_ID;
   }
 
-  $initMetaForIndex(idx) {
-    return { idx: idx, id: idx };
+  $initMeta(idx) {
+    return EMPTY;
   }
+
 }
