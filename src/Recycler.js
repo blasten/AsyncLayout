@@ -1,6 +1,6 @@
 import { EMPTY, UNKNOWN_IDX, RENDER_START, RENDER_END, DEFAULT_POOL_ID } from './constants';
 import { pushToPool, popFromPool, clamp, invariant } from './utils';
-import { forIdleTime } from './Async';
+import { forNextTick, forIdleTime } from './Async';
 
 export default class Recycler {
   constructor(container, pool, storage, meta) {
@@ -19,7 +19,8 @@ export default class Recycler {
 
   async recycle(excludedNodes) {
     if (excludedNodes) {
-      let resetSet = new Array(excludedNodes.length);
+      let excludedSize = excludedNodes.length, 
+          resetSet = new Array(excludedSize);
       excludedNodes.forEach((node, idx) => {
         let id = node.dataset.id;
         resetSet[idx] = this._keptNodes[id] ? null : id;
@@ -28,32 +29,24 @@ export default class Recycler {
       if (excludedNodes === this._nodes) {
         this._nodes = [];
       }
-      await this._recycle(RENDER_END, Math.max(1, resetSet.length), ++this._jobId);
+      await this._executeJob(++this._jobId, RENDER_END, Math.max(1, excludedSize));
       resetSet.forEach(id => this.release(id));
     } else {
-      await this._recycle(RENDER_START, 1, ++this._jobId);
-      await this._recycle(RENDER_END, 1, ++this._jobId);
+      await this._executeJob(++this._jobId, RENDER_START, 1);
+      await this._executeJob(++this._jobId, RENDER_END, 1);
     }
   }
 
-  async _recycle(from, increment, jobId) {
-    if (this._jobId != jobId) {
-      return;
-    }
-    // Schedule onscreen work.
-    while (!this.$isClientFull(this.startMeta, this.endMeta, from)) {
-      let now = performance.now();
-      if ((increment = this._populateClient(from, increment)) === 0) {
-        break;
-      }
-      this._unitCost = (performance.now() - now) / increment;
-      increment = 1;
-    }
-    // Schedule offscreen work.
-    if (0 && increment > 0 && !this.$hasEnoughContent(this.startMeta, this.endMeta, from)) {
-      let idle = await forIdleTime();
-      increment = clamp(~~(idle.timeRemaining() / this._unitCost), 1, this._nodes.length);
-      await this._recycle(from, this._populateClient(from, increment) * 2, jobId);
+  async _executeJob(jobId, from, jobSize) {
+    let now, cost = 0;
+    while (
+      jobId == this._jobId &&
+      jobSize != 0 &&
+      !this.$isClientFull(this.startMeta, this.endMeta, from)
+    ) {
+      now = performance.now();
+      jobSize = this._populateClient(from, jobSize);
+      cost = (performance.now() - now) / jobSize;
     }
   }
 
@@ -68,7 +61,7 @@ export default class Recycler {
     }
   }
 
-  _populateClient(from, nextIncrement) {
+  _populateClient(from, increment) {
     let node, meta, updates = 0, nodes = this._nodes,
         metas = this._meta,
         shouldRecycle = this.$shouldRecycle,
@@ -95,7 +88,7 @@ export default class Recycler {
     }
     // Dequeue node or allocate a new one.
     while (
-      updates < nextIncrement &&
+      updates < increment &&
       (node = this._getNode(from))
     ) {
       from == RENDER_START ? nodes.unshift(node) : nodes.push(node);

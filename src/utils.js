@@ -81,15 +81,15 @@ export function eventTarget(se) {
 }
 
 export function getScrollTop(scrollingElement) {
-  return scrollingElement === window ? window.pageYOffset : scrollingElement.scrollTop;
+  let global = window;
+  return eventTarget(scrollingElement) == global ?
+      global.pageYOffset : scrollingElement.scrollTop;
 }
 
 export function setScrollTop(scrollingElement, top) {
-  if (scrollingElement === window) {
-    window.scrollTo(0, top);
-  } else {
-    scrollingElement.scrollTop = top;
-  }
+  let global = window;
+  (eventTarget(scrollingElement) == global) ?
+      global.scrollTo(0, top) : (scrollingElement.scrollTop = top);
 }
 
 export function getHeightForElement(element) {

@@ -3,6 +3,7 @@
 <head>
   <title>ListView</title>
   <link rel="stylesheet" href="../dist/layout.css">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
   <style>
     .header {
       background-color: #ccc;
@@ -84,6 +85,10 @@
               container.onclick = toggleHidden;
               container.textContent = `Header for section ${section+1}`;
               container.classList.add('header');
+            },
+
+            heightForHeader: (container, section) => {
+              return 38;
             },
             idForRow: (section, row) => {
               return `${section}:${row}`;

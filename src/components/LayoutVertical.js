@@ -80,7 +80,7 @@ export default class LayoutVertical extends HTMLElement {
           .addEventListener('scroll', this._scrollDidUpdate);
     }
     this._props = newProps;
-    this._refresh();
+    this._refresh(true);
   }
 
   get _size() {
@@ -133,31 +133,37 @@ export default class LayoutVertical extends HTMLElement {
     }
   }
 
-  async _refresh() {
-    let props = this.props;
+  async _refresh(scroll) {
+    let cacheId = this._cacheId;
 
     await forBeforePaint();
 
-    if (this.props !== props) {
+    if (cacheId !== this._cacheId) {
       return;
     }
-    let top = getScrollTop(props.scrollingElement),
-        clientHeight = props.scrollingElement.clientHeight,
-        recycler = this._recycler;
-    // Update intervals.
-    this._intervals = getIntervals(props.numberOfSections, props.numberOfRowsInSection);
     // Invalidate the cache for height.
     this._cacheId++;
     this._sumNodes = 0;
     this._sumHeights = 0;
+
+    let props = this.props,
+        top = getScrollTop(props.scrollingElement),
+        clientHeight = props.scrollingElement.clientHeight,
+        recycler = this._recycler;
+    // Update intervals.
+    this._intervals = getIntervals(props.numberOfSections, props.numberOfRowsInSection);
     if (!this._firstRender && this._size == 0) {
       return;
     }
     else if (!this._firstRender && this._size > 0) {
       this._firstRender = true;
       await this._recycle(top, clientHeight, Array.from(this.children));
-    } else {
+    } 
+    else {
       await this._recycle(top, clientHeight, recycler.nodes);
+    }
+    if (scroll) {
+      this._scrollTo(props.sectionIndex, props.rowIndex);
     }
   }
 
@@ -198,6 +204,17 @@ export default class LayoutVertical extends HTMLElement {
     };
   }
 
+  _scrollTo(secIdx, rowIdx = UNKNOWN_IDX) {
+    let interval = this._intervals[secIdx];
+    if (!interval || rowIdx >= interval[1] - interval[0]) {
+      return;
+    }
+    let idx = interval[0] + 1 + rowIdx,
+        se = this.props.scrollingElement,
+        storage = this._storage[idx];
+    setScrollTop(se, storage && storage.y > 0 ? storage.y : idx * this._medianHeight);
+  }
+
   _initMeta(prevState) {
     if (prevState.idx != UNKNOWN_IDX) {
       return this._copyMeta(prevState);
@@ -207,31 +224,33 @@ export default class LayoutVertical extends HTMLElement {
       return this._copyMeta(meta);
     }
     let idx = clamp(~~(this._top/this._medianHeight), 0, this._size-1);
-    return this._copyMeta({ idx: idx, h: 0, y: this._top });
+    return this._copyMeta({ idx: idx, h: 0, y: idx * this._medianHeight});
   }
 
   _layout(node, meta) {
-    node.style.position = 'absolute';
-    node.style.top = `${meta.y}px`;
-    node.style.left = '0px';
-    node.style.right = '0px';
+    let nodeStyle = node.style;
+    nodeStyle.position = 'absolute';
+    nodeStyle.top = `${meta.y}px`;
+    nodeStyle.left = '0px';
+    nodeStyle.right = '0px';
 
     if (meta._isHeader) {
       let intervals = this._intervals,
           recycler = this._recycler,
           nextInterval = intervals[meta._secIdx+1],
-          headerContainer = node.firstElementChild;
+          headerContainerStyle = node.firstElementChild.style;
 
       if (nextInterval && recycler.has(nextInterval[0])) {
         let nextHeaderMeta = this._storage[nextInterval[0]];
-        node.style.height = `${nextHeaderMeta.y-meta.y}px`;
-        node.style.bottom = 'auto';
+        nodeStyle.height = `${nextHeaderMeta.y-meta.y}px`;
+        nodeStyle.bottom = 'auto';
       } else {
-        node.style.height = '';
-        node.style.bottom = '0px';
+        nodeStyle.height = '';
+        nodeStyle.bottom = '0px';
       }
-      headerContainer.style.position = 'sticky';
-      headerContainer.style.top = '0px';
+      headerContainerStyle.position = '-webkit-sticky';
+      headerContainerStyle.position = 'sticky';
+      headerContainerStyle.top = '0px';
     }
   }
 
