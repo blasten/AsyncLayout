@@ -1,5 +1,7 @@
 export const NOOP = _ => {};
 
+export const BY_ONE = _ => 10;
+
 export const EMPTY = {};
 
 export const UNKNOWN_IDX = -1;
