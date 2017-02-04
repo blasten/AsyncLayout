@@ -5,17 +5,29 @@ export function forNextTick() {
 export function forIdleTime() {
   return new Promise(function(resolve) {
     const w = window;
-    w.requestIdleCallback ? w.requestIdleCallback(resolve) :
-        w.setTimeout(resolve.bind(null, {
-          timeRemaining() {
-            return 50;
-          }
-        }), 16);
+    w.requestIdleCallback
+      ? w.requestIdleCallback(resolve)
+      : w.setTimeout(
+          resolve.bind(null, {
+            timeRemaining() {
+              return 50;
+            }
+          }),
+          16
+        );
   });
-};
+}
 
 export function forBeforePaint() {
   return new Promise(function(resolve) {
     window.requestAnimationFrame(resolve);
+  });
+}
+
+export function forNextAnimationFrame() {
+  return new Promise(function(resolve) {
+    setTimeout(function() {
+      window.requestAnimationFrame(resolve);
+    });
   });
 }
