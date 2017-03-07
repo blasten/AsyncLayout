@@ -1,11 +1,36 @@
 import { RENDER_START, RENDER_END } from './constants';
 
+export function runJobs(queue) {
+  if (queue.length === 0) {
+    return;
+  }
+  let job = queue[0];
+  return job._waiter().then(asyncMeta => {
+    if (job == queue[0]) {
+      queue.shift();
+      job._run(job, queue, asyncMeta);
+      return runJobs(queue);
+    }
+  });
+}
+
+export function addJob(newJob, queue) {
+  let job;
+  while (job = queue.shift()) {
+    if (job._preempt) {
+      job._run();
+    }
+  }
+  queue.push(newJob);
+  return runJobs(queue);
+}
+
 export function clamp(value, min, max) {
   return Math.max(min, Math.min(max, value));
 }
 
-export function getApproxSize(renderedSize, renderedNumber, totalNumber) {
-  return ~~(renderedSize + (totalNumber - renderedNumber) * (renderedSize / renderedNumber));
+export function getApproxSize(renderedSize, renderedNumber, medianSize, totalNumber) {
+  return renderedSize + (totalNumber - renderedNumber) * medianSize;
 }
 
 export function checkThreshold(start, end, offset, size, from, oversee) {
@@ -54,14 +79,11 @@ export function setProps(self, props) {
   });
 }
 
-export function setInstanceProps(props, self) {
+export function setInstanceProps(self) {
   if (self.hasOwnProperty('props')) {
     let userProps = self.props;
     delete self.props;
-    self.props = props;
     self.props = userProps;
-  } else {
-    self.props = props;
   }
 }
 
@@ -126,7 +148,6 @@ export function findIntervalIdx(idx, intervals) {
 }
 
 export function findInObject(obj, prop, value) {
-  // Could be binary, but that would require an interval tree...
   return Object.keys(obj).reduce((current, key) => {
     let meta = obj[key];
     return (meta[prop] <= value && (!current || value-meta[prop] < value-current[prop])) ?
@@ -150,4 +171,14 @@ export function popFromPool(pool, poolId) {
 
 export function getDiv() {
   return document.createElement('div');
+}
+
+export function hide(node) {
+  let style = node.style;
+  style.position = 'absolute';
+  style.top = '-10000px';
+  style.bottom = '';
+  style.left = '0';
+  style.right = '0';
+  return node;
 }

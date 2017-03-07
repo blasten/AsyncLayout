@@ -4,9 +4,18 @@ import {
   RENDER_START,
   RENDER_END,
   DEFAULT_POOL_ID,
-  BY_ONE
+  BY_ONE,
+  MIN_BATCH_SIZE
 } from './constants';
-import { pushToPool, popFromPool, clamp, runJobs, invariant } from './utils';
+import {
+  addJob,
+  pushToPool,
+  popFromPool,
+  clamp,
+  runJobs,
+  hide,
+  invariant
+} from './utils';
 import { forNextTick, forIdleTime, forNextAnimationFrame } from './Async';
 
 export default class Recycler {
@@ -18,76 +27,85 @@ export default class Recycler {
     this._storage = storage;
     this._meta = meta;
     this._pool = pool;
-    this._cost = 0;
     this._nodes = [];
     this._queue = [];
     this._keptNodes = {};
+    this._startIdx = UNKNOWN_IDX;
   }
 
-  async recycle(excludedNodes) {
-    let resetSet;
-    if (excludedNodes) {
-      resetSet = new Array(excludedNodes.length);
-      excludedNodes.forEach((node, idx) => {
-        let id = node.dataset.id;
-        resetSet[idx] = this._keptNodes[id] ? null : id;
+  refresh(nodes) {
+    let resetSet = [];
+    nodes.forEach((node, idx) => {
+      let id = node.dataset.id;
+      if (!this._keptNodes[id]) {
+        resetSet.push(id);
         this._keepNode(node);
-      });
-      if (excludedNodes === this._nodes) {
-        this._nodes = [];
       }
-      await this._scheduleRenderTask(
-        RENDER_END,
-        forNextTick,
-        this.$isClientIncomplete,
-        Math.max(1, excludedNodes.length)
-      );
-      resetSet && resetSet.forEach(id => this.release(id));
-    } else {
-      await this._scheduleRenderTask(
-        RENDER_START,
-        forNextTick,
-        this.$isClientIncomplete,
-        3
-      );
-      await this._scheduleRenderTask(
-        RENDER_END,
-        forNextTick,
-        this.$isClientIncomplete,
-        3
-      );
+    });
+    if (nodes === this._nodes) {
+      this._startIdx = this.startMeta.idx;
+      this._nodes = [];
     }
-  }
-
-  async fillBuffer() {
-    await this._scheduleRenderTask(
+    let batchSize = Math.max(MIN_BATCH_SIZE, nodes.length);
+    this._schedule(
       RENDER_START,
-      forIdleTime,
-      this.$isBufferIncomplete,
-      3
-    );
-    await this._scheduleRenderTask(
+      forNextTick,
+      this.$isClientIncomplete,
+      batchSize,
+      false
+    ).then(_ => this._schedule(
       RENDER_END,
-      forIdleTime,
-      this.$isBufferIncomplete,
-      3
-    );
+      forNextTick,
+      this.$isClientIncomplete,
+      batchSize,
+      false
+    )).then(_ => {
+      resetSet.forEach(id => this.release(id));
+      this._startIdx = UNKNOWN_IDX;
+    });
   }
 
-  _scheduleRenderTask(from, awaitFor, isDone, jobSize) {
-    return this._runLoop({
-      _await: awaitFor,
+  recycle(isBuffer) {
+    let batchSize = isBuffer ? 3 : MIN_BATCH_SIZE,
+      condition = isBuffer ? this.$isBufferIncomplete : this.$isClientIncomplete,
+      waiter = isBuffer ? forIdleTime : forNextTick;
+    
+    return this._schedule(
+      RENDER_START,
+      waiter,
+      condition,
+      batchSize,
+      true
+    ).then(_=> this._schedule(
+      RENDER_END,
+      waiter,
+      condition,
+      batchSize,
+      true
+    ));
+  }
+
+  _schedule(from, awaitFor, isDone, jobSize, fastDOM) {
+    let x = 0;
+    return addJob({
+      _waiter: awaitFor,
       _preempt: false,
       _run: (currentJob, queue, async) => {
-        if (!isDone(this.startMeta, this.endMeta, from)) {
+        x++;
+        if (x > 100) {
+          console.error('fucked');
+          return;
+        }
+        if (isDone(this.startMeta, this.endMeta, from)) {
           return;
         }
         let updateTask = this._write(from, jobSize);
         if (updateTask.size === 0) {
           return;
         }
+        let nodes = this._nodes;
         queue.push({
-          _await: forNextAnimationFrame,
+          _waiter: fastDOM ? forNextAnimationFrame : forNextTick,
           _preempt: true,
           _run: _ => {
             this._layout(updateTask);
@@ -96,35 +114,7 @@ export default class Recycler {
         });
         queue.push(currentJob);
       }
-    });
-  }
-
-  async _runLoop(task) {
-    let job, queue = this._queue;
-
-    if (this._isRunning) {
-      // Preempt the current tasks.
-      while (job = queue.shift()) {
-        if (job._preempt) {
-          job._run();
-        }
-      }
-    }
-    queue.push(task);
-
-    while (job = queue[0]) {
-      let asyncMeta = await job._await();
-      if (job === queue[0]) {
-        queue.shift();
-        job._run(job, queue, asyncMeta);
-      } else {
-        break;
-      }
-    }
-  }
-
-  _getJobSize(idle) {
-    return clamp(~~(idle.timeRemaining() / this._cost), 1, this._nodes.length);
+    }, this._queue);
   }
 
   _putInPool(node) {
@@ -133,8 +123,7 @@ export default class Recycler {
       dataset.poolId = DEFAULT_POOL_ID;
     }
     if (!this._keptNodes[dataset.id]) {
-      this._hideNode(node);
-      pushToPool(this._pool, dataset.poolId, node);
+      pushToPool(this._pool, dataset.poolId, hide(node));
     }
   }
 
@@ -144,32 +133,41 @@ export default class Recycler {
       nodes = this._nodes,
       metas = this._meta,
       size = 0,
-      shouldRecycle = this.$shouldRecycle;
-
-    // Enqueue node available for recycling.
-    while (
-      from == RENDER_START &&
+      shouldRecycle = this.$shouldRecycle,
+      startIdx = this.startMeta.idx,
+      endIdx = this.endMeta.idx;
+    if (
+      from == RENDER_START && startIdx !== 0 ||
+      from == RENDER_END && endIdx !== this.$size() - 1
+    ) {
+      // Enqueue node available for recycling.
+      while (
+        from == RENDER_START &&
         (node = nodes[nodes.length - 1]) &&
         (meta = metas.get(node)) &&
-        shouldRecycle(node, meta)
-    ) {
-      this._putInPool(node);
-      nodes.pop();
-    }
-    while (
-      from == RENDER_END &&
+        shouldRecycle(meta)
+      ) {
+        this._putInPool(node);
+        nodes.pop();
+      }
+      while (
+        from == RENDER_END &&
         (node = nodes[0]) &&
         (meta = metas.get(node)) &&
-        shouldRecycle(node, meta)
-    ) {
-      this._putInPool(node);
-      nodes.shift();
-    }
-    // Dequeue node or allocate a new one.
-    while (size < increment && (node = this._getNode(from))) {
-      from == RENDER_START ? nodes.unshift(node) : nodes.push(node);
-      this._append(node);
-      size++;
+        shouldRecycle(meta)
+      ) {
+        this._putInPool(node);
+        nodes.shift();
+      }
+      // Dequeue node or allocate a new one.
+      while (
+        size < increment &&
+        (node = this._getNode(from))
+      ) {
+        from == RENDER_START ? nodes.unshift(node) : nodes.push(node);
+        this._append(node);
+        size++;
+      }
     }
     return { from, nodes, size };
   }
@@ -214,41 +212,47 @@ export default class Recycler {
 
   _getNode(from) {
     let idx, size = this.$size();
-    if (size == 0) {
-      return null;
-    }
     if (this._nodes.length == 0) {
-      idx = UNKNOWN_IDX;
+      idx = Math.min(this._startIdx, size-1);
     } else {
       idx = from == RENDER_START
         ? this.startMeta.idx - 1
         : this.endMeta.idx + 1;
-      if (idx < 0 || idx >= size) {
-        return;
+      if (idx < 0) {
+        return null;
       }
     }
-    return this._getNodeByIdx(idx);
+    return idx < size && size > 0 ? this._getNodeByIdx(idx) : null;
   }
 
   _getNodeByIdx(idx) {
-    let meta, node, id, poolId, size = this.$size();
+    let meta,
+      node,
+      id,
+      poolId,
+      keptNodes = this._keptNodes,
+      size = this.$size();
 
     meta = this.$initMeta(this._storage[idx] || { idx, id: idx });
+
     invariant(
       meta.idx >= 0 && meta.idx < size,
       'meta should contain a valid index'
     );
     poolId = this.$poolIdForIndex(meta.idx, meta);
-    node = this._keptNodes[meta.id] ||
+    // Assign a node from any source.
+    node = keptNodes[meta.id] ||
       popFromPool(this._pool, poolId) ||
-      this.$createNodeContainer();
+      hide(this.$createNodeContainer());
     invariant(node.dataset && node.style, 'invalid node container');
+    node = this.$updateNode(node, meta.idx, meta);
     this._storage[meta.idx] = meta;
     this._meta.set(node, meta);
     node.dataset.id = meta.id;
     node.dataset.poolId = poolId;
-    node.style.pointerEvents = '';
-    this.$updateNode(node, meta.idx, meta);
+    if (keptNodes[meta.id]) {
+      keptNodes[meta.id] = node;
+    }
     return node;
   }
 
@@ -281,23 +285,15 @@ export default class Recycler {
     if (!node) {
       return;
     }
-    let meta = this._meta.get(node);
+    let meta = this._meta.get(node) || EMPTY;
 
     delete this._keptNodes[id];
 
-    if (this._nodes[meta.idx - this.startMeta.idx] === node) {
+    if (this._nodes[meta.idx - this.startMeta.idx] == node) {
       this.$layout(node, meta);
     } else {
       this._putInPool(node);
     }
-  }
-
-  _hideNode(node) {
-    let style = node.style;
-    style.position = 'absolute';
-    style.pointerEvents = 'none';
-    style.top = '-100000000px';
-    style.bottom = '';
   }
 
   get startMeta() {
@@ -316,7 +312,7 @@ export default class Recycler {
     return null;
   }
 
-  $shouldRecycle(node, meta) {
+  $shouldRecycle(meta) {
     return true;
   }
 
