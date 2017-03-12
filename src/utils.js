@@ -29,41 +29,34 @@ export function clamp(value, min, max) {
   return Math.max(min, Math.min(max, value));
 }
 
-export function getApproxSize(renderedSize, renderedNumber, medianSize, totalNumber) {
-  return renderedSize + (totalNumber - renderedNumber) * medianSize;
+export function checkThreshold(start, end, offset, size, dir, oversee) {
+  return dir == RENDER_START ? (start <= offset - oversee) : (end >= offset + size + oversee);
 }
 
-export function checkThreshold(start, end, offset, size, from, oversee) {
-  return from == RENDER_START ? (start <= offset - oversee) : (end >= offset + size + oversee);
-}
-
-export function getRowOffset(meta, idx, from, nodes, metas) {
-  if (from == RENDER_START && idx + 1 < nodes.length) {
+export function getRowOffset(meta, idx, dir, nodes, metas) {
+  if (dir == RENDER_START && idx + 1 < nodes.length) {
     let nextM = metas.get(nodes[idx + 1]);
-    return nextM.y - meta.h;
+    return nextM._offsetTop - meta._height;
   }
-  else if (from == RENDER_END && idx > 0) {
+  else if (dir == RENDER_END && idx > 0) {
     let prevM = metas.get(nodes[idx - 1]);
-    return prevM.y + prevM.h;
+    return prevM._offsetTop + prevM._height;
   }
-  return meta.y;
+  return meta._offsetTop;
 }
 
-export function getColumnOffset(meta, idx, from, nodes, metas) {
-  if (from == RENDER_START && idx + 1 < nodes.length) {
+export function getColumnOffset(meta, idx, dir, nodes, metas) {
+  if (dir == RENDER_START && idx + 1 < nodes.length) {
     let nextM = metas.get(nodes[idx + 1]);
     return nextM.x - meta.w;
   }
-  else if (from == RENDER_END && idx > 0) {
+  else if (dir == RENDER_END && idx > 0) {
     let prevM = metas.get(nodes[idx - 1]);
     return prevM.x + prevM.w;
   }
   return meta.x;
 }
 
-export function shouldRecycleRow(node, meta, offset, size) {
-  return meta.y + meta.h < offset || meta.y > offset + size
-}
 
 export function shouldRecycleColumn(node, meta, offset, size) {
   return meta.x + meta.w < offset || meta.x > offset + size
@@ -147,11 +140,15 @@ export function findIntervalIdx(idx, intervals) {
   return null;
 }
 
-export function findInObject(obj, prop, value) {
+export function findInObject(obj, value) {
   return Object.keys(obj).reduce((current, key) => {
     let meta = obj[key];
-    return (meta[prop] <= value && (!current || value-meta[prop] < value-current[prop])) ?
-        meta : current;
+    return (
+      meta._height > 0 &&
+      meta._offsetTop <= value && 
+      (!current || value-meta._offsetTop < value-current._offsetTop)) 
+      ? meta
+      : current;
   }, null);
 }
 
@@ -177,6 +174,7 @@ export function hide(node) {
   let style = node.style;
   style.position = 'absolute';
   style.top = '-10000px';
+  style.height = '';
   style.bottom = '';
   style.left = '0';
   style.right = '0';

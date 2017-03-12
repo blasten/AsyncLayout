@@ -5,7 +5,7 @@
   "main": "UITableView.js",
   "scripts": {
     "test": "mocha",
-    "serve": "browser-sync start --server --no-notify --directory --startPath demo",
+    "serve": "node ./server.js",
     "build": "npm-run-all transpile inline-styles",
     "watch": "watch 'npm run build' dist/ -d",
     "transpile": "rollup src/components/all.js -f umd -n Layout -c build/rollup.config.js --output dist/layout.js",
@@ -25,8 +25,8 @@
   "devDependencies": {
     "babel-preset-babili": "0.0.9",
     "babel-preset-es2015-rollup": "^3.0.0",
-    "browser-sync": "^2.18.8",
     "expect.js": "^0.3.1",
+    "express": "^4.15.2",
     "mocha": "^2.4.5",
     "npm-run-all": "^3.1.2",
     "rollup": "^0.37.0",
