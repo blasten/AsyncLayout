@@ -6,12 +6,12 @@ let subtaskQueue = [];
 export function addTask(promiseHandler, cb, isRoot) {
   let queue = subtaskQueue;
   if (isRoot) {
+    // Fast way to empty an array.
+    rootTaskQueue.length = 0;
     let subtask;
     while (subtask = subtaskQueue.shift()) {
       subtask();
     }
-    // Fast way to empty an array.
-    rootTaskQueue.length = 0;
     queue = rootTaskQueue;
   }
   queue.push(cb);
