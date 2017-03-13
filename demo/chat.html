@@ -103,15 +103,13 @@
           list.props = {
             scrollingElement: document.getElementById('scrollingElement'),
             numberOfSections: 10,
-            sectionIndex: 9,
-            rowIndex: 499,
-            // bottom: true,
+            sectionIndex: 0,
+            rowIndex: 0,
+            bottom: true,
             numberOfRowsInSection: (section) => {
-              section = 9 - section; 
               return hiddenSet[section] ? 0 : data.length;
             },
             domForRow: (container, sectionIdx, rowIdx) => {
-              rowIdx = 499 - rowIdx;
               if (container.children.length === 0) {
                 container.innerHTML = `<b>${data[rowIdx].index}</b>
                   <div>${data[rowIdx].longText}</div>`;
@@ -121,9 +119,7 @@
                 container.children[1].textContent = data[rowIdx].longText;
               }
             },
-            domForHeader: (container, sectionIdx) => {
-              sectionIdx = 9 - sectionIdx;
-           
+            domForHeader: (container, sectionIdx) => {           
               container.dataset.section = sectionIdx;
               container.onclick = toggleHidden;
               container.textContent = `Header for section ${sectionIdx+1}`;

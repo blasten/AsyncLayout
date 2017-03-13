@@ -34,25 +34,25 @@ export default class Recycler {
     this.__cb = callbacks;
   }
 
-  _refresh(nodes) {
+  _refresh(set, dir) {
     let cb = this.__cb, resetSet = [], startIdx = UNKNOWN_IDX;
-    nodes.forEach((node, idx) => {
+    set.forEach((node, idx) => {
       let key = node.dataset.key;
       if (!this.__keyNodeMap[key]) {
         resetSet.push(key);
         this.__keepNode(node);
       }
     });
-    if (nodes === this.__nodes) {
-      startIdx = this._startMeta.idx;
+    if (set === this.__nodes) {
+      startIdx = (dir == RENDER_START ? this._endMeta : this._startMeta).idx;
       this.__nodes = [];
     }
     this
       .__schedule(
-        RENDER_END,
+        dir,
         forNextTick,
         cb._isClientIncomplete,
-        Math.max(MIN_BATCH_SIZE, nodes.length),
+        Math.max(MIN_BATCH_SIZE, set.length),
         true,
         startIdx,
       )

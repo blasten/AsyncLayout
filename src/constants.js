@@ -41,3 +41,5 @@ export const PROP_DOM_FOR_ROW = 'domForRow';
 export const PROP_KEY_FOR_HEADER = 'keyForHeader';
 
 export const PROP_KEY_FOR_ROW = 'keyForRow';
+
+export const PROP_BOTTOM = 'bottom';
