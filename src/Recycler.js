@@ -24,111 +24,111 @@ export default class Recycler {
     invariant(pool instanceof Object, 'Invalid pool type');
     invariant(storage instanceof Object, 'Invalid storage type');
     invariant(meta instanceof WeakMap, 'Invalid meta type');
-    this._container = container;
-    this._storage = storage;
-    this._meta = meta;
-    this._pool = pool;
-    this._nodes = [];
-    this._queue = [];
-    this._keyNodeMap = {};
+    this.__container = container;
+    this.__storage = storage;
+    this.__meta = meta;
+    this.__pool = pool;
+    this.__nodes = [];
+    this.__queue = [];
+    this.__keyNodeMap = {};
   }
 
-  refresh(nodes) {
+  _refresh(nodes) {
     let resetSet = [], startIdx = UNKNOWN_IDX;
     nodes.forEach((node, idx) => {
       let key = node.dataset.key;
-      if (!this._keyNodeMap[key]) {
+      if (!this.__keyNodeMap[key]) {
         resetSet.push(key);
-        this._keepNode(node);
+        this.__keepNode(node);
       }
     });
-    if (nodes === this._nodes) {
-      startIdx = this.startMeta.idx;
-      this._nodes = [];
+    if (nodes === this.__nodes) {
+      startIdx = this._startMeta.idx;
+      this.__nodes = [];
     }
     this
-      ._schedule(
+      .__schedule(
         RENDER_END,
         forNextTick,
-        this.$isClientIncomplete,
+        this._isClientIncomplete,
         Math.max(MIN_BATCH_SIZE, nodes.length),
         true,
-        startIdx
+        startIdx,
       )
       .then(_ => {
         resetSet.forEach(key => {
-          let meta = this._meta.get(this._keyNodeMap[key]);
-          if (!meta || this.has(meta.idx)) {
-            this.release(key);
+          let meta = this.__meta.get(this.__keyNodeMap[key]);
+          if (!meta || this._has(meta.idx)) {
+            this._release(key);
           }
         });
       });
   }
 
-  recycle(isBuffer, recalcs) {
+  _recycle(isBuffer, recalcs) {
     let batchSize = isBuffer ? 3 : MIN_BATCH_SIZE,
       isJobDone = isBuffer
-        ? this.$isBufferIncomplete
-        : this.$isClientIncomplete,
+        ? this._isBufferIncomplete
+        : this._isClientIncomplete,
       waiter = isBuffer ? forIdleTime : forNextTick;
     return this
-      ._schedule(RENDER_START, waiter, isJobDone, batchSize, recalcs)
+      .__schedule(RENDER_START, waiter, isJobDone, batchSize, recalcs)
       .then(_ =>
-        this._schedule(RENDER_END, waiter, isJobDone, batchSize, recalcs));
+        this.__schedule(RENDER_END, waiter, isJobDone, batchSize, recalcs));
   }
 
-  _schedule(dir, awaitFor, isDone, jobSize, recalcs, startIdx = UNKNOWN_IDX) {
+  __schedule(dir, awaitFor, isDone, jobSize, recalcs, startIdx = UNKNOWN_IDX) {
     return addJob(
       {
         _waiter: awaitFor,
         _preempt: false,
         _run: (currentJob, queue, async) => {
-          if (isDone(this.startMeta, this.endMeta, dir)) {
+          if (isDone(this._startMeta, this._endMeta, dir)) {
             return;
           }
-          let updateTask = this._updateTree(dir, jobSize, startIdx);
+          let updateTask = this.__updateTree(dir, jobSize, startIdx);
           if (updateTask.size === 0) {
             return;
           }
-          let nodes = this._nodes;
+          let nodes = this.__nodes;
           queue.push({
             _waiter: recalcs ? forNextTick : forNextAnimationFrame,
             _preempt: true,
             _run: _ => {
-              this._layout(updateTask);
-              this._nodes = updateTask.nodes;
+              this.__layout(updateTask);
+              this.__nodes = updateTask.nodes;
             },
           });
           queue.push(currentJob);
         },
       },
-      this._queue,
+      this.__queue,
     );
   }
 
-  _putInPool(node) {
+  __putInPool(node) {
     let dataset = node.dataset;
     if (!dataset.pool) {
       dataset.pool = DEFAULT_POOL_ID;
     }
-    if (!this._keyNodeMap[dataset.key]) {
-      pushToPool(this._pool, dataset.pool, hide(node));
+    if (!this.__keyNodeMap[dataset.key]) {
+      pushToPool(this.__pool, dataset.pool, hide(node));
     }
   }
 
-  _updateTree(dir, increment, startIdx) {
+  __updateTree(dir, increment, startIdx) {
     let node,
       meta,
-      nodes = this._nodes,
-      metas = this._meta,
+      nodes = this.__nodes,
+      metas = this.__meta,
       size = 0,
-      startMeta = this.startMeta,
-      endMeta = this.endMeta;
+      startMeta = this._startMeta,
+      endMeta = this._endMeta;
 
     if (startMeta && dir == RENDER_START && startMeta.idx === 0) {
       return { dir, nodes, size };
     }
-    if (endMeta && dir == RENDER_END && endMeta.idx === this.$size() - 1) {
+    if (endMeta && dir == RENDER_END && endMeta.idx === this._size() - 1) {
       return { dir, nodes, size };
     }
     // Enqueue node available for recycling.
@@ -136,36 +136,36 @@ export default class Recycler {
       dir == RENDER_START &&
       (node = nodes[nodes.length - 1]) &&
       (meta = metas.get(node)) &&
-      this.$shouldRecycle(meta)
+      this._shouldRecycle(meta)
     ) {
-      this._putInPool(node);
+      this.__putInPool(node);
       nodes.pop();
     }
     while (
       dir == RENDER_END &&
       (node = nodes[0]) &&
       (meta = metas.get(node)) &&
-      this.$shouldRecycle(meta)
+      this._shouldRecycle(meta)
     ) {
-      this._putInPool(node);
+      this.__putInPool(node);
       nodes.shift();
     }
     // Dequeue node or allocate a new one.
-    while (size < increment && (node = this._getNode(dir, startIdx))) {
+    while (size < increment && (node = this.__getNode(dir, startIdx))) {
       dir == RENDER_START ? nodes.unshift(node) : nodes.push(node);
-      this._append(node);
+      this.__append(node);
       size++;
     }
     return { dir, nodes, size };
   }
 
-  _layout(updateTask) {
+  __layout(updateTask) {
     let nodes = updateTask.nodes,
       dir = updateTask.dir,
       size = updateTask.size,
-      metas = this._meta,
-      makeActive = this.$makeActive,
-      layout = this.$layout;
+      metas = this.__meta,
+      makeActive = this._makeActive,
+      layout = this._layout;
     // Read.
     for (let i = size - 1; dir == RENDER_START && i >= 0; i--) {
       makeActive(nodes[i], metas.get(nodes[i]), nodes, metas, i, dir);
@@ -190,141 +190,149 @@ export default class Recycler {
     }
   }
 
-  _append(node) {
-    let container = this._container;
+  __append(node) {
+    let container = this.__container;
     if (node.parentNode !== undefined && node.parentNode !== container) {
       container.appendChild(node);
     }
   }
 
-  _getNode(dir, startIdx = UNKNOWN_IDX) {
-    let idx, size = this.$size();
-    if (this._nodes.length == 0) {
+  __getNode(dir, startIdx = UNKNOWN_IDX) {
+    let idx, size = this._size();
+    if (this.__nodes.length == 0) {
       idx = Math.min(startIdx, size - 1);
     } else {
-      idx = dir == RENDER_START ? this.startMeta.idx - 1 : this.endMeta.idx + 1;
+      idx = dir == RENDER_START
+        ? this._startMeta.idx - 1
+        : this._endMeta.idx + 1;
       if (idx < 0) {
         return null;
       }
     }
-    return idx < size && size > 0 ? this._getNodeByIdx(idx) : null;
+    return idx < size && size > 0 ? this.__getNodeByIdx(idx) : null;
   }
 
-  _getNodeByIdx(idx) {
-    let meta, node, key, pool, keptNodes = this._keyNodeMap, size = this.$size();
+  __getNodeByIdx(idx) {
+    let meta,
+      node,
+      pool,
+      key = idx,
+      keptNodes = this.__keyNodeMap,
+      size = this._size();
 
-    meta = this.$initMeta(this._storage[idx] || { idx, key: idx });
+    meta = this._initMeta(this.__storage[idx] || { idx, key });
 
     invariant(
       meta.idx >= 0 && meta.idx < size,
       'meta should contain a valid index',
     );
-    pool = this.$poolForIndex(meta.idx, meta);
+    pool = this._poolForIndex(meta.idx, meta);
+    key = meta.key;
     // Assign a node from any source.
-    node = keptNodes[meta.key] ||
-      popFromPool(this._pool, pool) ||
-      hide(this.$createNodeContainer());
+    node = keptNodes[key] ||
+      popFromPool(this.__pool, pool) ||
+      hide(this._createNodeContainer());
     invariant(node.dataset && node.style, 'invalid node container');
-    node = this.$updateNode(node, meta.idx, meta);
-    this._storage[meta.idx] = meta;
-    this._meta.set(node, meta);
-    node.dataset.key = meta.key;
+    node = this._updateNode(node, meta.idx, meta);
+    this.__storage[meta.idx] = meta;
+    this.__meta.set(node, meta);
+    node.dataset.key = key;
     node.dataset.pool = pool;
-    if (keptNodes[meta.key]) {
-      keptNodes[meta.key] = node;
+    if (keptNodes[key]) {
+      keptNodes[key] = node;
     }
     return node;
   }
 
-  has(idx) {
-    return idx >= this.startMeta.idx && idx <= this.endMeta.idx;
+  _has(idx) {
+    return idx >= this._startMeta.idx && idx <= this._endMeta.idx;
   }
 
-  _keepNode(node) {
+  __keepNode(node) {
     invariant(
       node.dataset.key != '',
       'Node should contain a `dataset.key` property',
     );
-    this._keyNodeMap[node.dataset.key] = node;
+    this.__keyNodeMap[node.dataset.key] = node;
   }
 
-  keep(idx) {
-    let node, meta = this._storage[idx];
-    if (meta && (node = this._keyNodeMap[meta.key])) {
-      this.$layout(node, meta);
+  _keep(idx) {
+    let node, meta = this.__storage[idx];
+    if (meta && (node = this.__keyNodeMap[meta.key])) {
+      this._layout(node, meta);
       return meta.key;
     }
-    node = this.has(idx)
-      ? this._nodes[idx - this.startMeta.idx]
-      : this._getNodeByIdx(idx);
-    this._keepNode(node, false);
-    this._append(node, RENDER_END);
-    this.$layout(node, this._meta.get(node));
+    node = this._has(idx)
+      ? this.__nodes[idx - this._startMeta.idx]
+      : this.__getNodeByIdx(idx);
+    this.__keepNode(node, false);
+    this.__append(node, RENDER_END);
+    this._layout(node, this.__meta.get(node));
     return node.dataset.key;
   }
 
-  release(key) {
-    let node = this._keyNodeMap[key];
+  _release(key) {
+    let node = this.__keyNodeMap[key];
     if (!node) {
       return;
     }
-    let meta = this._meta.get(node) || EMPTY;
+    let meta = this.__meta.get(node) || EMPTY;
 
-    delete this._keyNodeMap[key];
+    delete this.__keyNodeMap[key];
 
-    if (this._nodes[meta.idx - this.startMeta.idx] == node) {
-      this.$layout(node, meta);
+    if (this.__nodes[meta.idx - this._startMeta.idx] == node) {
+      this._layout(node, meta);
     } else {
-      this._putInPool(node);
+      this.__putInPool(node);
     }
   }
 
-  get startMeta() {
-    return this._meta.get(this._nodes[0]) || EMPTY;
+  get _startMeta() {
+    return this.__meta.get(this.__nodes[0]) || EMPTY;
   }
 
-  get endMeta() {
-    return this._meta.get(this._nodes[this._nodes.length - 1]) || EMPTY;
+  get _endMeta() {
+    return this.__meta.get(this.__nodes[this.__nodes.length - 1]) || EMPTY;
   }
 
-  get nodes() {
-    return this._nodes;
+  get _nodes() {
+    return this.__nodes;
   }
 
-  $createNodeContainer() {
+  _createNodeContainer() {
     return null;
   }
 
-  $shouldRecycle(meta) {
+  _shouldRecycle(meta) {
     return true;
   }
 
-  $isClientIncomplete(startMeta, endMeta, dir) {
+  _isClientIncomplete(startMeta, endMeta, dir) {
     return false;
   }
 
-  $isBufferIncomplete(startMeta, endMeta, dir) {
+  _isBufferIncomplete(startMeta, endMeta, dir) {
     return true;
   }
 
-  $size() {
+  _size() {
     return 0;
   }
 
-  $layout(node, meta) {
+  _layout(node, meta) {
   }
 
-  $makeActive(node, meta, nodes, metas, idx, dir) {
+  _makeActive(node, meta, nodes, metas, idx, dir) {
   }
 
-  $updateNode(node, idx, meta) {
+  _updateNode(node, idx, meta) {
   }
 
-  $poolForIndex(idx, meta) {
+  _poolForIndex(idx, meta) {
     return DEFAULT_POOL_ID;
   }
 
-  $initMeta(idx) {
+  _initMeta(idx) {
     return EMPTY;
   }
 }
