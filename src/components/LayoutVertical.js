@@ -1,12 +1,23 @@
-import Recycler from '../Recycler';
-import { forBeforePaint } from '../Async';
-import { styleLayoutVertical, styleItemContainerTopVertical } from './styles';
 import {
   EMPTY,
   UNKNOWN_IDX,
   RENDER_START,
   RENDER_END,
   NOOP,
+  GLOBAL,
+  PROP_SCROLLING_ELEMENT,
+  PROP_NUMBER_OF_ROWS_IN_SECTION,
+  PROP_NUMBER_OF_SECTIONS,
+  PROP_SECTION_INDEX,
+  PROP_ROW_INDEX,
+  PROP_POOL_FOR_HEADER,
+  PROP_POOL_FOR_ROW,
+  PROP_HEIGHT_FOR_HEADER,
+  PROP_HEIGHT_FOR_ROW,
+  PROP_DOM_FOR_HEADER,
+  PROP_DOM_FOR_ROW,
+  PROP_KEY_FOR_HEADER,
+  PROP_KEY_FOR_ROW,
 } from '../constants';
 import {
   clamp,
@@ -23,10 +34,14 @@ import {
   findInObject,
   invariant,
 } from '../utils';
+import Recycler from '../Recycler';
+import { forBeforePaint } from '../Async';
+import { styleLayoutVertical, styleItemContainerTopVertical } from './styles';
 
 export default class LayoutVertical extends HTMLElement {
   constructor() {
     super();
+    setInstanceProps(this);
     this.style.cssText = styleLayoutVertical;
     this.__top = 0;
     this.__cacheId = 0;
@@ -44,28 +59,140 @@ export default class LayoutVertical extends HTMLElement {
     this.__windowDidResize = this.__windowDidResize.bind(this);
     this.__didFocus = this.__didFocus.bind(this);
     // Create recyler context.
-    let recycler = new Recycler(this, this.__pool, this.__storage, this.__meta);
-    recycler._initMeta = this.__initMeta.bind(this);
-    recycler._shouldRecycle = this.__shouldRecycle.bind(this);
-    recycler._isClientIncomplete = this.__isClientIncomplete.bind(this);
-    recycler._isBufferIncomplete = this.__isBufferIncomplete.bind(this);
-    recycler._poolForIndex = this.__poolForIndex.bind(this);
-    recycler._layout = this.__layout.bind(this);
-    recycler._makeActive = this.__makeActive.bind(this);
-    recycler._updateNode = this.__updateNode.bind(this);
-    recycler._size = _ => this.__size;
-    recycler._createNodeContainer = getDiv;
-    this._recycler = recycler;
-    setInstanceProps(this);
+    let self = this;
+    this._recycler = new Recycler(
+      this,
+      this.__pool,
+      this.__storage,
+      this.__meta,
+      {
+        _initMeta(prevState) {
+          if (prevState.idx != UNKNOWN_IDX) {
+            return self.__copyMeta(prevState);
+          }
+          let meta = findInObject(self.__storage, self.__top);
+          if (meta && meta.idx < self.__size && !this._shouldRecycle(meta)) {
+            return self.__copyMeta(meta);
+          }
+          let idx = clamp(
+            ~~(self.__top / self.__medianHeight),
+            0,
+            self.__size - 1,
+          );
+          return self.__copyMeta({
+            idx: idx,
+            _height: 0,
+            _offsetTop: idx * self.__medianHeight,
+          });
+        },
+        _shouldRecycle(meta) {
+          return meta._offsetTop + meta._height < self.__top ||
+            meta._offsetTop > self.__top + self.__clientHeight;
+        },
+        _isClientIncomplete(startMeta, endMeta, dir) {
+          return checkThreshold(
+            startMeta._offsetTop,
+            endMeta._offsetTop + endMeta._height,
+            self.__top,
+            self.__clientHeight,
+            dir,
+            self._from === dir ? self.__delta : 0,
+          );
+        },
+        _isBufferIncomplete(startMeta, endMeta, dir) {
+          return checkThreshold(
+            startMeta._offsetTop,
+            endMeta._offsetTop + endMeta._height,
+            self.__top,
+            self.__clientHeight,
+            dir,
+            500,
+          );
+        },
+        _poolForIndex(idx, meta) {
+          return meta._isHeader
+            ? self.props[PROP_POOL_FOR_HEADER](meta._secIdx)
+            : self.props[PROP_POOL_FOR_ROW](meta._secIdx, meta._rowIdx);
+        },
+        _layout(node, meta) {
+          let nodeStyle = node.style;
+          nodeStyle.position = 'absolute';
+          nodeStyle.top = `${meta._offsetTop}px`;
+          nodeStyle.left = '0';
+          nodeStyle.right = '0';
+
+          if (meta._isHeader) {
+            let intervals = self.__intervals,
+              nextInterval = intervals[meta._secIdx + 1],
+              headerContainerStyle = node.__header.style,
+              nextHeaderMeta = nextInterval
+                ? self.__storage[nextInterval[0]]
+                : null;
+            if (nextHeaderMeta && nextHeaderMeta._offsetTop > meta._offsetTop) {
+              nodeStyle.height = `${nextHeaderMeta._offsetTop -
+                meta._offsetTop}px`;
+              nodeStyle.bottom = 'auto';
+            } else {
+              nodeStyle.height = '';
+              nodeStyle.bottom = '0';
+            }
+            headerContainerStyle.position = '-webkit-sticky';
+            headerContainerStyle.position = 'sticky';
+            headerContainerStyle.top = '0px';
+          } else {
+            nodeStyle.contain = 'content';
+          }
+        },
+        _makeActive(node, meta, nodes, metas, idx, dir) {
+          meta._height = meta._isHeader
+            ? self.props[PROP_HEIGHT_FOR_HEADER](
+                node.firstElementChild,
+                meta._secIdx,
+              )
+            : self.props[PROP_HEIGHT_FOR_ROW](node, meta._secIdx, meta._rowIdx);
+          meta._offsetTop = getRowOffset(meta, idx, dir, nodes, metas);
+          meta.__cacheId = self.__cacheId;
+          // Keep track of the widths to estimate the mean.
+          self.__sumHeights = self.__sumHeights + meta._height;
+          self.__sumNodes = self.__sumNodes + 1;
+        },
+        _updateNode(node, idx, meta) {
+          if (meta._isHeader) {
+            let header = node.__header;
+            if (!header) {
+              header = node;
+              node = getDiv();
+              node.__header = header;
+              node.appendChild(header);
+            }
+            node.style.pointerEvents = 'none';
+            header.style.zIndex = '1';
+            header.style.pointerEvents = 'auto';
+            self.props[PROP_DOM_FOR_HEADER](header, meta._secIdx);
+          } else {
+            self.props[PROP_DOM_FOR_ROW](node, meta._secIdx, meta._rowIdx);
+          }
+          return node;
+        },
+
+        _size() {
+          return self.__size;
+        },
+
+        _createNodeContainer() {
+          return getDiv();
+        },
+      },
+    );
   }
 
   connectedCallback() {
-    window.addEventListener('resize', this.__windowDidResize);
+    GLOBAL.addEventListener('resize', this.__windowDidResize);
     this.addEventListener('focus', this.__didFocus, true);
   }
 
   disconnectedCallback() {
-    window.removeEventListener('resize', this.__windowDidResize);
+    GLOBAL.removeEventListener('resize', this.__windowDidResize);
     this.removeEventListener('focus', this.__didFocus);
   }
 
@@ -79,43 +206,47 @@ export default class LayoutVertical extends HTMLElement {
       '`props` should be an object',
     );
     invariant(
-      newProps.scrollingElement instanceof HTMLElement,
+      newProps[PROP_SCROLLING_ELEMENT] instanceof HTMLElement,
       '`props.scrollingElement` should be an element',
     );
     invariant(
-      newProps.poolForHeader instanceof Function,
-      '`props.poolIdForHeader` should be a function that returns an id',
+      newProps[PROP_POOL_FOR_HEADER] instanceof Function,
+      '`props.poolForHeader` should be a function that returns an id',
     );
     invariant(
-      newProps.poolForRow instanceof Function,
-      '`props.poolIdForRow` should be a function that returns an id',
+      newProps[PROP_POOL_FOR_ROW] instanceof Function,
+      '`props.poolForRow` should be a function that returns an id',
     );
     invariant(
-      newProps.heightForHeader instanceof Function,
+      newProps[PROP_HEIGHT_FOR_HEADER] instanceof Function,
       '`props.heightForHeader` should be a function that returns the height of the header',
     );
     invariant(
-      newProps.heightForRow instanceof Function,
+      newProps[PROP_HEIGHT_FOR_ROW] instanceof Function,
       '`props.heightForRow` should be a function that returns the height of the row',
     );
     let oldProps = this.__props;
     this.__props = newProps;
     // Create the interval tree that will allow to map sections to a flat array.
     this.__intervals = getIntervals(
-      newProps.numberOfSections,
-      newProps.numberOfRowsInSection,
+      newProps[PROP_NUMBER_OF_SECTIONS],
+      newProps[PROP_NUMBER_OF_ROWS_IN_SECTION],
     );
     this.__scrollTo(newProps.sectionIndex, newProps.rowIndex);
     this.__refresh();
     // Install the scroll event listener.
-    if (!oldProps || oldProps.scrollingElement !== newProps.scrollingElement) {
+    let oldScrollingElement = oldProps
+      ? oldProps[PROP_SCROLLING_ELEMENT]
+      : null,
+      newScrollingElement = newProps[PROP_SCROLLING_ELEMENT];
+    if (oldScrollingElement !== newScrollingElement) {
       if (oldProps) {
-        eventTarget(oldProps.scrollingElement).removeEventListener(
+        eventTarget(oldScrollingElement).removeEventListener(
           'scroll',
           this.__scrollDidUpdate,
         );
       }
-      eventTarget(newProps.scrollingElement).addEventListener(
+      eventTarget(newScrollingElement).addEventListener(
         'scroll',
         this.__scrollDidUpdate,
       );
@@ -123,7 +254,7 @@ export default class LayoutVertical extends HTMLElement {
   }
 
   get __size() {
-    const intervals = this.__intervals;
+    let intervals = this.__intervals;
     return intervals && intervals.length > 0
       ? intervals[intervals.length - 1][1] + 1
       : 0;
@@ -153,14 +284,14 @@ export default class LayoutVertical extends HTMLElement {
       secIdx = 0;
     }
     let props = this.props,
-      maxSecIdx = props.numberOfSections - 1,
+      maxSecIdx = props[PROP_NUMBER_OF_SECTIONS] - 1,
       interval = this.__intervals[secIdx],
       idx = interval[0] + rowIdx + 1;
     if (secIdx > maxSecIdx) {
       if (rowIdx >= interval[1] - interval[0]) {
         return this.__scrollTo(
           maxSecIdx,
-          props.numberOfRowsInSection(maxSecIdx),
+          props[PROP_NUMBER_OF_ROWS_IN_SECTION](maxSecIdx),
         );
       } else {
         return this.__scrollTo(maxSecIdx, rowIdx);
@@ -169,7 +300,34 @@ export default class LayoutVertical extends HTMLElement {
     // Pick a large height, so that the scroll position can be changed.
     this.style.height = `${this.__contentHeight * 2}px`;
     this.__top = idx * this.__medianHeight;
-    setScrollTop(props.scrollingElement, this.__top);
+    setScrollTop(props[PROP_SCROLLING_ELEMENT], this.__top);
+  }
+
+  __refresh() {
+    let cacheId = this.__cacheId, recycler = this._recycler;
+    return forBeforePaint()
+      .then(_ => {
+        if (
+          cacheId !== this.__cacheId || !this.__didRender && this.__size == 0
+        ) {
+          return;
+        }
+        // Invalidate the cache for height.
+        let scrollingElement = this.__props[PROP_SCROLLING_ELEMENT];
+        this.__cacheId++;
+        this.__sumNodes = 0;
+        this.__sumHeights = 0;
+        this.__top = getScrollTop(scrollingElement);
+        this.__clientHeight = scrollingElement.clientHeight;
+        return recycler._refresh(
+          this.__didRender ? recycler._nodes : Array.from(this.children),
+        );
+      })
+      .then(_ => this._adjust())
+      .then(_ => recycler._recycle(true))
+      .then(_ => {
+        this.__didRender = true;
+      });
   }
 
   _adjust() {
@@ -181,10 +339,10 @@ export default class LayoutVertical extends HTMLElement {
         if (startIdx > 0 && oldStartY < 0 || startIdx == 0 && oldStartY != 0) {
           startMeta._offsetTop = this.__medianHeight * startIdx;
           setScrollTop(
-            this.props.scrollingElement,
+            this.props[PROP_SCROLLING_ELEMENT],
             startMeta._offsetTop + this.__top - oldStartY,
           );
-          return recycler._refresh(recycler.nodes);
+          return recycler._refresh(recycler._nodes);
         }
       })
       .then(_ => {
@@ -200,66 +358,14 @@ export default class LayoutVertical extends HTMLElement {
       });
   }
 
-  __refresh() {
-    let cacheId = this.__cacheId, recycler = this._recycler;
-    return forBeforePaint()
-      .then(_ => {
-        if (cacheId !== this.__cacheId || !this.__didRender && this.__size == 0) {
-          return;
-        }
-        // Invalidate the cache for height.
-        this.__cacheId++;
-        this.__sumNodes = 0;
-        this.__sumHeights = 0;
-        this.__top = getScrollTop(this.__props.scrollingElement);
-        this._clientHeight = this.__props.scrollingElement.clientHeight;
-
-        return recycler._refresh(
-          this.__didRender ? recycler._nodes : Array.from(this.children),
-        );
-      })
-      .then(_ => this._adjust())
-      .then(_ => recycler._recycle(true))
-      .then(_ => {
-        this.__didRender = true;
-      });
-  }
-
-  __isClientIncomplete(startMeta, endMeta, dir) {
-    return checkThreshold(
-      startMeta._offsetTop,
-      endMeta._offsetTop + endMeta._height,
-      this.__top,
-      this._clientHeight,
-      dir,
-      this._from === dir ? this.__delta : 0,
-    );
-  }
-
-  __isBufferIncomplete(startMeta, endMeta, dir) {
-    return checkThreshold(
-      startMeta._offsetTop,
-      endMeta._offsetTop + endMeta._height,
-      this.__top,
-      this._clientHeight,
-      dir,
-      500,
-    );
-  }
-
-  __shouldRecycle(meta) {
-    return meta._offsetTop + meta._height < this.__top ||
-      meta._offsetTop > this.__top + this._clientHeight;
-  }
-
   __copyMeta(meta) {
     let intervals = this.__intervals,
       secIdx = findIntervalIdx(meta.idx, intervals),
       rowIdx = meta.idx - intervals[secIdx][0] - 1,
       isHeader = meta.idx == intervals[secIdx][0],
       key = isHeader
-        ? this.props.keyForHeader(secIdx)
-        : this.props.keyForRow(secIdx, rowIdx);
+        ? this.props[PROP_KEY_FOR_HEADER](secIdx)
+        : this.props[PROP_KEY_FOR_ROW](secIdx, rowIdx);
 
     invariant(
       key != null,
@@ -277,96 +383,17 @@ export default class LayoutVertical extends HTMLElement {
     };
   }
 
-  __initMeta(prevState) {
-    if (prevState.idx != UNKNOWN_IDX) {
-      return this.__copyMeta(prevState);
-    }
-    let meta = findInObject(this.__storage, this.__top);
-    if (meta && meta.idx < this.__size && !this._shouldRecycle(meta)) {
-      return this.__copyMeta(meta);
-    }
-    let idx = clamp(~~(this.__top / this.__medianHeight), 0, this.__size - 1);
-    return this.__copyMeta({
-      idx: idx,
-      _height: 0,
-      _offsetTop: idx * this.__medianHeight,
-    });
-  }
-
-  __layout(node, meta) {
-    let nodeStyle = node.style;
-    nodeStyle.position = 'absolute';
-    nodeStyle.top = `${meta._offsetTop}px`;
-    nodeStyle.left = '0';
-    nodeStyle.right = '0';
-
-    if (meta._isHeader) {
-      let intervals = this.__intervals,
-        nextInterval = intervals[meta._secIdx + 1],
-        headerContainerStyle = node.__header.style,
-        nextHeaderMeta = nextInterval ? this.__storage[nextInterval[0]] : null;
-      if (nextHeaderMeta && nextHeaderMeta._offsetTop > meta._offsetTop) {
-        nodeStyle.height = `${nextHeaderMeta._offsetTop - meta._offsetTop}px`;
-        nodeStyle.bottom = 'auto';
-      } else {
-        nodeStyle.height = '';
-        nodeStyle.bottom = '0';
-      }
-      headerContainerStyle.position = '-webkit-sticky';
-      headerContainerStyle.position = 'sticky';
-      headerContainerStyle.top = '0px';
-    } else {
-      nodeStyle.contain = 'content';
-    }
-  }
-
-  __makeActive(node, meta, nodes, metas, idx, dir) {
-    meta._height = meta._isHeader
-      ? this.props.heightForHeader(node.firstElementChild, meta._secIdx)
-      : this.props.heightForRow(node, meta._secIdx, meta._rowIdx);
-    meta._offsetTop = getRowOffset(meta, idx, dir, nodes, metas);
-    meta.__cacheId = this.__cacheId;
-    // Keep track of the widths to estimate the mean.
-    this.__sumHeights = this.__sumHeights + meta._height;
-    this.__sumNodes = this.__sumNodes + 1;
-  }
-
-  __poolForIndex(idx, meta) {
-    return meta._isHeader
-      ? this.props.poolForHeader(meta._secIdx)
-      : this.props.poolForRow(meta._secIdx, meta._rowIdx);
-  }
-
-  __updateNode(node, idx, meta) {
-    if (meta._isHeader) {
-      let header = node.__header;
-      if (!header) {
-        header = node;
-        node = getDiv();
-        node.__header = header;
-        node.appendChild(header);
-      }
-      node.style.pointerEvents = 'none';
-      header.style.zIndex = '1';
-      header.style.pointerEvents = 'auto';
-      this.props.domForHeader(header, meta._secIdx);
-    } else {
-      this.props.domForRow(node, meta._secIdx, meta._rowIdx);
-    }
-    return node;
-  }
-
   __scrollDidUpdate() {
     if (this.__didRender) {
-      let se = this.props.scrollingElement,
-        top = getScrollTop(se),
+      let scrollingElement = this.props[PROP_SCROLLING_ELEMENT],
+        top = getScrollTop(scrollingElement),
         oldTop = this.__top,
-        delta = Math.abs(oldTop - top),
-        clientHeight = se.clientHeight;
-      this.__top = top;
-      this._clientHeight = clientHeight;
-      this.__delta = delta > clientHeight ? 0 : delta * 3;
+        clientHeight = scrollingElement.clientHeight,
+        delta = Math.abs(oldTop - top);
 
+      this.__top = top;
+      this.__clientHeight = clientHeight;
+      this.__delta = delta > clientHeight ? 0 : delta * 3;
       this._from = top > oldTop ? RENDER_END : RENDER_START;
       this._recycler
         ._recycle(false, delta > clientHeight)
