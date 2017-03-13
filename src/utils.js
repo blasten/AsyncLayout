@@ -1,28 +1,25 @@
 import { RENDER_START, RENDER_END, GLOBAL } from './constants';
 
-export function runJobs(queue) {
-  if (queue.length === 0) {
-    return;
+let rootTaskQueue = [];
+let subtaskQueue = [];
+
+export function addTask(promiseHandler, cb, isRoot) {
+  let queue = subtaskQueue;
+  if (isRoot) {
+    let subtask;
+    while (subtask = subtaskQueue.shift()) {
+      subtask();
+    }
+    // Fast way to empty an array.
+    rootTaskQueue.length = 0;
+    queue = rootTaskQueue;
   }
-  let job = queue[0];
-  return job._waiter().then(asyncMeta => {
-    if (job == queue[0]) {
-      queue.shift();
-      job._run(job, queue, asyncMeta);
-      return runJobs(queue);
+  queue.push(cb);
+  return promiseHandler().then(_ => {
+    if (queue.shift() === cb) {
+      return cb();
     }
   });
-}
-
-export function addJob(newJob, queue) {
-  let job;
-  while (job = queue.shift()) {
-    if (job._preempt) {
-      job._run();
-    }
-  }
-  queue.push(newJob);
-  return runJobs(queue);
 }
 
 export function clamp(value, min, max) {

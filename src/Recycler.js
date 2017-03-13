@@ -9,7 +9,7 @@ import {
   NOOP,
 } from './constants';
 import {
-  addJob,
+  addTask,
   pushToPool,
   popFromPool,
   clamp,
@@ -77,33 +77,32 @@ export default class Recycler {
         this.__schedule(RENDER_END, waiter, isJobDone, batchSize, recalcs));
   }
 
-  __schedule(dir, awaitFor, isDone, jobSize, recalcs, startIdx = UNKNOWN_IDX) {
-    return addJob(
-      {
-        _waiter: awaitFor,
-        _preempt: false,
-        _run: (currentJob, queue, async) => {
-          if (isDone(this._startMeta, this._endMeta, dir)) {
-            return;
-          }
-          let updateTask = this.__updateTree(dir, jobSize, startIdx);
-          if (updateTask.size === 0) {
-            return;
-          }
-          let nodes = this.__nodes;
-          queue.push({
-            _waiter: recalcs ? forNextTick : forNextAnimationFrame,
-            _preempt: true,
-            _run: _ => {
-              this.__layout(updateTask);
-              this.__nodes = updateTask.nodes;
-            },
-          });
-          queue.push(currentJob);
-        },
-      },
-      this.__queue,
-    );
+  __schedule(
+    dir,
+    writePromise,
+    isDone,
+    jobSize,
+    inFrame,
+    startIdx = UNKNOWN_IDX,
+  ) {
+    let updateTask,
+      readPromise = inFrame ? forNextTick : forNextAnimationFrame;
+    // Initializes a task that like in this case it can be preempted,
+    // that is momentarily interrupted, to wait for browser's layout and
+    // then waken up to query fresh geometry data without thrashing.
+    return addTask(writePromise, _ => {
+      if (isDone(this._startMeta, this._endMeta, dir)) {
+        return;
+      }
+      updateTask = this.__updateTree(dir, jobSize, startIdx);
+      if (updateTask.size > 0) {
+        return addTask(readPromise, _ => {
+          this.__layout(updateTask);
+          this.__nodes = updateTask.nodes;
+          return this.__schedule(dir, writePromise, isDone, jobSize, inFrame, startIdx);
+        }, false);
+      }
+    }, true);
   }
 
   __putInPool(node) {
