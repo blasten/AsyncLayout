@@ -1,13 +1,14 @@
+import { GLOBAL } from './constants';
+
 export function forNextTick() {
   return Promise.resolve();
 }
 
 export function forIdleTime() {
   return new Promise(function(resolve) {
-    const w = window;
-    w.requestIdleCallback
-      ? w.requestIdleCallback(resolve)
-      : w.setTimeout(
+    GLOBAL.requestIdleCallback
+      ? GLOBAL.requestIdleCallback(resolve)
+      : GLOBAL.setTimeout(
           resolve.bind(null, {
             timeRemaining() {
               return 50;
@@ -20,14 +21,14 @@ export function forIdleTime() {
 
 export function forBeforePaint() {
   return new Promise(function(resolve) {
-    window.requestAnimationFrame(resolve);
+    GLOBAL.requestAnimationFrame(resolve);
   });
 }
 
 export function forNextAnimationFrame() {
   return new Promise(function(resolve) {
     setTimeout(function() {
-      window.requestAnimationFrame(resolve);
+      GLOBAL.requestAnimationFrame(resolve);
     });
   });
 }
