@@ -43,7 +43,6 @@ export default class LayoutVertical extends HTMLElement {
   constructor() {
     super();
     setInstanceProps(this);
-    this.style.cssText = styleLayoutVertical;
     this.__top = 0;
     this.__cacheId = 0;
     this.__sumHeights = 0;
@@ -201,6 +200,7 @@ export default class LayoutVertical extends HTMLElement {
   }
 
   connectedCallback() {
+    this.style.cssText = styleLayoutVertical;
     GLOBAL.addEventListener('resize', this.__windowDidResize);
     this.addEventListener('focus', this.__didFocus, true);
   }
@@ -458,3 +458,5 @@ export default class LayoutVertical extends HTMLElement {
     this._focusedNodeId = this._recycler._keep(meta.idx);
   }
 }
+
+customElements.define('layout-vertical', LayoutVertical);

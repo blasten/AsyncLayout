@@ -13,7 +13,6 @@ import {
   pushToPool,
   popFromPool,
   clamp,
-  runJobs,
   hide,
   invariant,
 } from './utils';
@@ -190,7 +189,7 @@ export default class Recycler {
 
   __append(node) {
     let container = this.__container;
-    if (node.parentNode !== undefined && node.parentNode !== container) {
+    if (node.appendChild && node.parentNode !== container) {
       container.appendChild(node);
     }
   }
