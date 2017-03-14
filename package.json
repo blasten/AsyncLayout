@@ -30,7 +30,6 @@
     "mocha": "^2.4.5",
     "npm-run-all": "^3.1.2",
     "rollup": "^0.37.0",
-    "rollup-plugin-async": "^1.2.0",
     "rollup-plugin-babel": "^2.7.1",
     "uglify-js": "git+https://github.com/mishoo/UglifyJS2.git#harmony",
     "watch": "^1.0.2"
