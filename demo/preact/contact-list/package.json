@@ -11,6 +11,7 @@
     "preact": "^7.2.0"
   },
   "devDependencies": {
+    "express": "^4.15.2",
     "babel-preset-babili": "0.0.9",
     "babel-preset-es2015-rollup": "^3.0.0",
     "babel-preset-react": "^6.23.0",
