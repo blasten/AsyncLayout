@@ -1,0 +1,54 @@
+{
+  "scripts": {
+    "serve": "node ./server.js",
+    "watch": "watch 'npm run build' dist/ -d",
+    "build": "rollup components/App.jsx -f umd -c rollup.config.js --output dist/app.js",
+    "minimize": "uglifyjs dist/app.js -c collapse_vars,evaluate,screw_ie8,unsafe,loops,keep_fargs,pure_getters,unused,dead_code -m --mangle-props --mangle-regex='/^(_|\\$)/' --pure-funcs=invariant -o dist/app.min.js"
+  },
+  "author": "Emmanuel Garcia <blasten@gmail.com>",
+  "license": "MIT",
+  "dependencies": {
+    "preact": "^7.2.0"
+  },
+  "devDependencies": {
+    "babel-preset-babili": "0.0.9",
+    "babel-preset-es2015-rollup": "^3.0.0",
+    "babel-preset-react": "^6.23.0",
+    "rollup": "^0.37.0",
+    "rollup-plugin-babel": "^2.7.1",
+    "rollup-plugin-node-resolve": "^2.0.0",
+    "uglify-js": "git+https://github.com/mishoo/UglifyJS2.git#harmony"
+  },
+  "babel": {
+    "env": {
+      "development": {
+        "presets": [
+          "react"
+        ],
+        "plugins": [
+          [
+            "transform-react-jsx",
+            {
+              "pragma": "h"
+            }
+          ]
+        ]
+      },
+      "production": {
+        "presets": [
+          "react",
+          "babili"
+        ],
+        "plugins": [
+          "minify-mangle-names",
+          [
+            "transform-react-jsx",
+            {
+              "pragma": "h"
+            }
+          ]
+        ]
+      }
+    }
+  }
+}
