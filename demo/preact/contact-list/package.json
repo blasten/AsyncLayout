@@ -1,6 +1,7 @@
 {
   "scripts": {
-    "serve": "node ./server.js",
+    "serve:csr": "node ./server-csr",
+    "serve:ssr": "node ./server-ssr",
     "watch": "watch 'npm run build' dist/ -d",
     "build": "rollup components/App.jsx -f umd -c rollup.config.js --output dist/app.js",
     "minimize": "uglifyjs dist/app.js -c collapse_vars,evaluate,screw_ie8,unsafe,loops,keep_fargs,pure_getters,unused,dead_code -m --mangle-props --mangle-regex='/^(_|\\$)/' --pure-funcs=invariant -o dist/app.min.js"
