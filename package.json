@@ -5,7 +5,7 @@
   "main": "UITableView.js",
   "scripts": {
     "test": "mocha",
-    "serve": "node ./server.js",
+    "serve": "node ./server",
     "build": "npm-run-all transpile inline-styles",
     "watch": "watch 'npm run build' dist/ -d",
     "transpile": "rollup src/components/all.js -f umd -n Layout -c build/rollup.config.js --output dist/layout.js",
